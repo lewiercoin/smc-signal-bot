@@ -337,13 +337,14 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/swing_detector.py` | ✅ | 9 | — |
 | `smc/structure_analyzer.py` | ✅ | 10 | `11357ee` |
 | `smc/ob_detector.py` | ✅ | 11 | `640f568` |
-| `smc/utils.py` | ✅ | 13 | bieżący |
+| `smc/utils.py` | ✅ | 13 | `f2707a7` |
+| `smc/fvg_detector.py` | ✅ | 10 | bieżący |
 
-**Łączna liczba testów: 104**
+**Łączna liczba testów: 114**
 
 ### Następny krok
 
-`smc/fvg_detector.py` — Fair Value Gaps
+`smc/liquidity_detector.py` — ostatni moduł Tygodnia 2
 
 ---
 
@@ -354,6 +355,15 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
   - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
   - `calculate_atr_series(candles, period)` → list[float | None] (Wilder's smoothing per-candle, używana przez OrderBlockDetector)
 - Obie funkcje importowane przez `smc/swing_detector.py` i `smc/ob_detector.py` — zero duplikacji ATR.
+
+### FVG Detector — decyzje logiczne
+- **FVG definition**: candle3.low > candle1.high (bullish), candle3.high < candle1.low (bearish) — ICT 3-candle imbalance
+- **Gap zone**: bullish = candle1.high → candle3.low; bearish = candle3.high → candle1.low
+- **fill_percentage semantics**: 0.0 = untouched, 1.0 = fully filled; wartości 0.0–0.99 = nadal valid (ICT: cena wraca wypełnić FVG)
+- **Age limit**: 30 bars (nie 50 jak OB) — FVG szybciej tracą relevance
+- **Size threshold**: 0.2 ATR (nie 0.3 jak OB) — FVG bywają mniejsze niż OB
+- **is_valid=False** tylko przy: fill >= 1.0 (fully filled) LUB age > 30 bars
+- **ATR source**: `smc.utils.calculate_atr_series` — wspólna implementacja, zero duplikacji
 
 ### OB Detector — decyzje logiczne
 - **Impulse measurement**: close-to-close (body movement), NIE wick-to-wick (ICT displacement definition)

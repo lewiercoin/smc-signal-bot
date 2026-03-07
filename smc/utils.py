@@ -12,17 +12,23 @@ if TYPE_CHECKING:
 
 
 def calculate_atr_scalar(candles: list[Candle], period: int) -> float:
-    """Calculate Average True Range as a single scalar value.
+    """Calculate a single ATR value (simple average of True Ranges).
 
-    Simple mean of True Ranges over the given period. Used by SwingDetector
-    for volatility regime comparisons.
+    Uses period-1 true ranges: candle[0] is the reference point,
+    candles[1..period-1] provide the TR values. This matches
+    SwingDetector's usage where a slice of ATR_PERIOD candles is passed.
+
+    Semantic difference vs calculate_atr_series:
+    - scalar: period-1 TRs from period candles (candle[0] = reference)
+    - series: period TRs from period+1 candles (full Wilder's)
+    Both are correct for their respective use cases.
 
     Args:
-        candles: List of OHLCV candles (must have at least 2)
-        period: Number of candles to use (will be clamped to len(candles))
+        candles: List of Candle objects (minimum `period` candles)
+        period: ATR period (default 14)
 
     Returns:
-        ATR value as float. Returns 0.0 if insufficient candles.
+        Single float ATR value, or 0.0 if insufficient data.
     """
     if len(candles) < 2:
         return 0.0
@@ -50,18 +56,23 @@ def calculate_atr_scalar(candles: list[Candle], period: int) -> float:
 def calculate_atr_series(
     candles: list[Candle], period: int = 14
 ) -> list[float | None]:
-    """Calculate ATR(period) for each candle using Wilder's smoothing.
+    """Calculate ATR series using Wilder's smoothing (one value per candle).
 
-    Returns a per-candle ATR series aligned with the candles list.
-    The first `period` values are None (insufficient data to compute ATR).
-    Used by OrderBlockDetector for impulse threshold and OB quality metrics.
+    Uses `period` true ranges for initial ATR (indices 0..period-1 from
+    true_ranges where true_ranges[i] = TR between candles[i] and candles[i+1]).
+    Subsequent values use Wilder's formula: ATR = (prev_ATR * (period-1) + TR) / period.
+
+    Semantic difference vs calculate_atr_scalar:
+    - scalar: period-1 TRs from period candles (candle[0] = reference)
+    - series: period TRs from period+1 candles (full Wilder's)
+    Both are correct for their respective use cases.
 
     Args:
-        candles: List of OHLCV candles in chronological order
+        candles: List of Candle objects
         period: ATR period (default 14)
 
     Returns:
-        List of ATR values (None where insufficient data). Same length as candles.
+        List of (float | None), same length as candles. None for first `period` entries.
     """
     n = len(candles)
     atr_values: list[float | None] = [None] * n
