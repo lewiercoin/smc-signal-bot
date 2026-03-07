@@ -329,27 +329,43 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 ### Status tygodni
 
 - **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
-- **Tydzień 2:** 🔄 W TOKU (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ⬜)
+- **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
 - **Tydzień 3:** ⬜ NIE ROZPOCZĘTY (Confluence Engine + News API)
 
-### Ukończone moduły (Tydzień 2 w toku)
+### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
 | Moduł | Status | Testy | Commit |
 |-------|--------|-------|--------|
-| `connectors/oanda_client.py` | ✅ | 19 | — |
-| `db/database.py` | ✅ | 17 | — |
-| `dq/data_quality.py` | ✅ | 25 | — |
+| `connectors/oanda_client.py` | ✅ | — | — |
+| `db/schema.sql` | ✅ | — | — |
+| `dq/validators.py` | ✅ | — | — |
 | `smc/swing_detector.py` | ✅ | 9 | — |
 | `smc/structure_analyzer.py` | ✅ | 10 | `11357ee` |
 | `smc/ob_detector.py` | ✅ | 11 | `640f568` |
 | `smc/utils.py` | ✅ | 13 | `f2707a7` |
-| `smc/fvg_detector.py` | ✅ | 10 | bieżący |
+| `smc/fvg_detector.py` | ✅ | 10 | — |
+| `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 114**
+**Łączna liczba testów: 126**
 
-### Następny krok
+### Tydzień 2 — SMC Engine UKOŃCZONY
 
-`smc/liquidity_detector.py` — ostatni moduł Tygodnia 2
+```
+- swing_detector.py     (9 testów)  — dynamic swing_length GROK-2
+- structure_analyzer.py (10 testów) — BOS/CHoCH/trend
+- ob_detector.py        (11 testów) — Order Blocks + quality
+- fvg_detector.py       (10 testów) — Fair Value Gaps + fill %
+- liquidity_detector.py (12 testów) — Liquidity Sweeps
+- utils.py              (13 testów) — shared ATR (scalar + series)
+```
+
+### Następny krok: Tydzień 3 — Confluence Engine + News API
+
+```
+Moduły:
+- engine/confluence_scorer.py  (scoring 110 pkt)
+- connectors/news_client.py    (prawdziwe API zamiast mock calendar)
+```
 
 ---
 
@@ -380,6 +396,18 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - `_determine_trend()`: używa `>` (nie `>=`) — eliminuje false bullish przy równych HH/LH
 - `_determine_trend()`: analizuje `swings[-4:-1]` — wyklucza ostatni swing (potencjalny CHoCH) z oceny trendu
 - **Tech Debt Faza 2**: CHoCH wg ICT powinien wymagać przebicia poprzedniego SH/SL; obecna implementacja uproszczona
+
+### Liquidity Detector — decyzje logiczne
+- **Sweep definition**: wick beyond level + close back inside (ICT standard)
+- **Penetration filter**: 0.05–2.0 ATR — `< 0.05` = noise, `> 2.0` = breakout (odfiltrowany przed quality)
+- **Age limit**: 20 bars (najkrótszy z SMC modułów — sweepy tracą relevance szybciej niż OB=50, FVG=30)
+- **Next candle confirmation**: jeśli next candle close przekracza level → `is_valid=False` (breakout potwierdzony)
+- **Rejection strength**: `abs(close - level) / ATR` — próg > 0.3 (im dalej close od poziomu, tym silniejszy sweep)
+- **Level tested count**: wick ±0.2 ATR od poziomu, liczone świece przed sweep (mierzą nagromadzenie liquidity)
+- **Buyside sweep = bearish**: SM sprzedaje po zebraniu buy stops (powyżej swing high)
+- **Sellside sweep = bullish**: SM kupuje po zebraniu sell stops (poniżej swing low)
+- **Spójność**: `is_valid=False` → `quality.passed` MUSI być `False` (wymuszane w `_find_buyside/sellside_sweeps`)
+- **ATR source**: `smc.utils.calculate_atr_series` — wspólna implementacja, zero duplikacji
 
 ---
 
