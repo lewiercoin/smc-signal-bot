@@ -190,14 +190,22 @@ class TestStructureAnalyzer:
     def test_detects_choch_bullish(self, analyzer: StructureAnalyzer, base_time: datetime) -> None:
         """Test detection of bullish Change of Character."""
         # Bullish CHoCH: Higher low in bearish trend (trend reversal)
-        # First establish bearish trend with LH + LL, then reversal signal
+        # recent_highs[-3:] = [LH, LH, LH] → LH=2, HH=0
+        # recent_lows[-3:] = [LL, LL, HL] → LL=2 > HL=1? No, need LL only before CHoCH
+        # Use 4 lows so recent_lows[-3:] = [LL, LL, HL(CHoCH)] → LL=2 first two = bearish trend
+        # Actually: recent_lows[-3:] includes CHoCH candidate, LL=1 HL=1 → ranging
+        # Solution: have 5 lows, so the 3 BEFORE last = all LL
         swings = [
-            self._create_swing_point(5, 1.1250, base_time, "high"),          # First high
-            self._create_swing_point(10, 1.1150, base_time + timedelta(hours=5), "low"),
-            self._create_swing_point(15, 1.1200, base_time + timedelta(hours=10), "high"),  # LH
-            self._create_swing_point(20, 1.1100, base_time + timedelta(hours=15), "low"),  # LL
-            self._create_swing_point(25, 1.1150, base_time + timedelta(hours=20), "high"),  # LH
-            self._create_swing_point(30, 1.1130, base_time + timedelta(hours=25), "low"),  # Higher Low = CHoCH!
+            self._create_swing_point(5, 1.1300, base_time, "high"),
+            self._create_swing_point(10, 1.1200, base_time + timedelta(hours=5), "low"),
+            self._create_swing_point(15, 1.1250, base_time + timedelta(hours=10), "high"),  # LH
+            self._create_swing_point(20, 1.1150, base_time + timedelta(hours=15), "low"),  # LL
+            self._create_swing_point(25, 1.1220, base_time + timedelta(hours=20), "high"),  # LH
+            self._create_swing_point(30, 1.1100, base_time + timedelta(hours=25), "low"),  # LL
+            self._create_swing_point(35, 1.1180, base_time + timedelta(hours=30), "high"),  # LH
+            self._create_swing_point(40, 1.1050, base_time + timedelta(hours=35), "low"),  # LL
+            self._create_swing_point(45, 1.1140, base_time + timedelta(hours=40), "high"),  # LH
+            self._create_swing_point(50, 1.1090, base_time + timedelta(hours=45), "low"),  # Higher Low = CHoCH!
         ]
 
         highs = [s for s in swings if s.swing_type == "high"]
@@ -214,23 +222,27 @@ class TestStructureAnalyzer:
 
         result = analyzer.analyze(swing_result)
 
-        assert result.trend == "bearish"  # Should detect bearish first
+        assert result.trend == "bearish"
         assert result.last_choch is not None
         assert result.last_choch.from_trend == "bearish"
         assert result.last_choch.to_trend == "bullish"
-        assert result.last_choch.price == 1.1130
+        assert result.last_choch.price == 1.1090
 
     def test_detects_choch_bearish(self, analyzer: StructureAnalyzer, base_time: datetime) -> None:
         """Test detection of bearish Change of Character."""
         # Bearish CHoCH: Lower high in bullish trend (trend reversal)
-        # First establish bullish trend with HH + HL, then reversal signal
+        # Mirror of bullish CHoCH: 4 HH before CHoCH, 3 HL before CHoCH
         swings = [
-            self._create_swing_point(5, 1.0850, base_time, "low"),          # First low
+            self._create_swing_point(5, 1.0850, base_time, "low"),
             self._create_swing_point(10, 1.0950, base_time + timedelta(hours=5), "high"),
-            self._create_swing_point(15, 1.0900, base_time + timedelta(hours=10), "low"),  # HL
+            self._create_swing_point(15, 1.0880, base_time + timedelta(hours=10), "low"),  # HL
             self._create_swing_point(20, 1.1050, base_time + timedelta(hours=15), "high"),  # HH
-            self._create_swing_point(25, 1.1000, base_time + timedelta(hours=20), "low"),  # HL
-            self._create_swing_point(30, 1.1020, base_time + timedelta(hours=25), "high"),  # Lower High = CHoCH!
+            self._create_swing_point(25, 1.0950, base_time + timedelta(hours=20), "low"),  # HL
+            self._create_swing_point(30, 1.1150, base_time + timedelta(hours=25), "high"),  # HH
+            self._create_swing_point(35, 1.1050, base_time + timedelta(hours=30), "low"),  # HL
+            self._create_swing_point(40, 1.1250, base_time + timedelta(hours=35), "high"),  # HH
+            self._create_swing_point(45, 1.1150, base_time + timedelta(hours=40), "low"),  # HL
+            self._create_swing_point(50, 1.1200, base_time + timedelta(hours=45), "high"),  # Lower High = CHoCH!
         ]
 
         highs = [s for s in swings if s.swing_type == "high"]
@@ -247,23 +259,26 @@ class TestStructureAnalyzer:
 
         result = analyzer.analyze(swing_result)
 
-        assert result.trend == "bullish"  # Should detect bullish first
+        assert result.trend == "bullish"
         assert result.last_choch is not None
         assert result.last_choch.from_trend == "bullish"
         assert result.last_choch.to_trend == "bearish"
-        assert result.last_choch.price == 1.1020
+        assert result.last_choch.price == 1.1200
 
     def test_htf_bias_follows_choch(self, analyzer: StructureAnalyzer, base_time: datetime) -> None:
         """Test that HTF bias follows CHoCH direction."""
-        # CHoCH bullish should give "long" bias
-        # First establish bearish trend, then bullish CHoCH
+        # CHoCH bullish → bias = "long" — identyczne dane co test_detects_choch_bullish
         swings = [
-            self._create_swing_point(5, 1.1250, base_time, "high"),
-            self._create_swing_point(10, 1.1150, base_time + timedelta(hours=5), "low"),
-            self._create_swing_point(15, 1.1200, base_time + timedelta(hours=10), "high"),  # LH
-            self._create_swing_point(20, 1.1100, base_time + timedelta(hours=15), "low"),  # LL
-            self._create_swing_point(25, 1.1150, base_time + timedelta(hours=20), "high"),  # LH
-            self._create_swing_point(30, 1.1130, base_time + timedelta(hours=25), "low"),  # Higher Low = CHoCH
+            self._create_swing_point(5, 1.1300, base_time, "high"),
+            self._create_swing_point(10, 1.1200, base_time + timedelta(hours=5), "low"),
+            self._create_swing_point(15, 1.1250, base_time + timedelta(hours=10), "high"),  # LH
+            self._create_swing_point(20, 1.1150, base_time + timedelta(hours=15), "low"),  # LL
+            self._create_swing_point(25, 1.1220, base_time + timedelta(hours=20), "high"),  # LH
+            self._create_swing_point(30, 1.1100, base_time + timedelta(hours=25), "low"),  # LL
+            self._create_swing_point(35, 1.1180, base_time + timedelta(hours=30), "high"),  # LH
+            self._create_swing_point(40, 1.1050, base_time + timedelta(hours=35), "low"),  # LL
+            self._create_swing_point(45, 1.1140, base_time + timedelta(hours=40), "high"),  # LH
+            self._create_swing_point(50, 1.1090, base_time + timedelta(hours=45), "low"),  # Higher Low = CHoCH
         ]
 
         highs = [s for s in swings if s.swing_type == "high"]
@@ -286,12 +301,14 @@ class TestStructureAnalyzer:
 
     def test_htf_bias_follows_trend_no_choch(self, analyzer: StructureAnalyzer, base_time: datetime) -> None:
         """Test that HTF bias follows trend when no CHoCH."""
-        # No CHoCH - bullish trend should give "long" bias
+        # No CHoCH - clear bullish trend (HH=2 > LH=0, HL=2 > LL=0) should give "long" bias
         swings = [
-            self._create_swing_point(10, 1.0900, base_time, "low"),
-            self._create_swing_point(15, 1.1000, base_time + timedelta(hours=5), "high"),
-            self._create_swing_point(20, 1.0950, base_time + timedelta(hours=10), "low"),
-            self._create_swing_point(25, 1.1100, base_time + timedelta(hours=15), "high"),
+            self._create_swing_point(5,  1.0900, base_time, "low"),
+            self._create_swing_point(10, 1.1000, base_time + timedelta(hours=5), "high"),
+            self._create_swing_point(15, 1.0950, base_time + timedelta(hours=10), "low"),   # HL
+            self._create_swing_point(20, 1.1100, base_time + timedelta(hours=15), "high"),  # HH
+            self._create_swing_point(25, 1.1050, base_time + timedelta(hours=20), "low"),   # HL
+            self._create_swing_point(30, 1.1200, base_time + timedelta(hours=25), "high"),  # HH
         ]
 
         highs = [s for s in swings if s.swing_type == "high"]

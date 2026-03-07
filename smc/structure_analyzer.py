@@ -242,12 +242,13 @@ class StructureAnalyzer:
         Returns:
             Trend string: "bullish", "bearish", or "ranging"
         """
-        if len(swings.highs) < 2 or len(swings.lows) < 2:
+        if len(swings.highs) < 3 or len(swings.lows) < 3:
             return "ranging"
 
-        # Analyze last 3 swing highs for direction
-        recent_highs = swings.highs[-3:]
-        recent_lows = swings.lows[-3:]
+        # Analyze swing highs/lows excluding the last one (potential CHoCH candidate)
+        # This prevents the CHoCH signal from polluting trend detection
+        recent_highs = swings.highs[-4:-1] if len(swings.highs) >= 4 else swings.highs[:-1]
+        recent_lows = swings.lows[-4:-1] if len(swings.lows) >= 4 else swings.lows[:-1]
 
         # Check for Higher Highs (bullish) or Lower Highs (bearish)
         hh_count = 0
@@ -270,16 +271,10 @@ class StructureAnalyzer:
                 ll_count += 1
 
         # Determine trend based on combinations
-        # Bullish: majority HH and HL
-        if hh_count >= lh_count and hl_count >= ll_count:
-            if hh_count > 0 or hl_count > 0:
-                return "bullish"
-
-        # Bearish: majority LH and LL
-        if lh_count >= hh_count and ll_count >= hl_count:
-            if lh_count > 0 or ll_count > 0:
-                return "bearish"
-
+        if hh_count > lh_count and hl_count > ll_count:
+            return "bullish"
+        if lh_count > hh_count and ll_count > hl_count:
+            return "bearish"
         return "ranging"
 
     def _determine_htf_bias(
