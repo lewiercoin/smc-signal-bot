@@ -325,7 +325,50 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 
 ---
 
-## 15. Harmonogram implementacji (9 tygodni)
+## 15. Stan implementacji (bieżący)
+
+### Ukończone moduły (Tydzień 2–3 w toku)
+
+| Moduł | Status | Testy | Commit |
+|-------|--------|-------|--------|
+| `connectors/oanda_client.py` | ✅ | — | — |
+| `db/schema.sql` | ✅ | — | — |
+| `dq/validators.py` | ✅ | — | — |
+| `smc/swing_detector.py` | ✅ | 9 | — |
+| `smc/structure_analyzer.py` | ✅ | 10 | `11357ee` |
+| `smc/ob_detector.py` | ✅ | 11 | `640f568` |
+| `smc/utils.py` | ✅ | 13 | bieżący |
+
+**Łączna liczba testów: 104**
+
+### Następny krok
+
+`smc/fvg_detector.py` — Fair Value Gaps
+
+---
+
+## 15b. Kluczowe decyzje techniczne (zapis audytów)
+
+### ATR — implementacja
+- `smc/utils.py` zawiera dwie funkcje ATR (bez pandas-ta, czysta implementacja):
+  - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
+  - `calculate_atr_series(candles, period)` → list[float | None] (Wilder's smoothing per-candle, używana przez OrderBlockDetector)
+- Obie funkcje importowane przez `smc/swing_detector.py` i `smc/ob_detector.py` — zero duplikacji ATR.
+
+### OB Detector — decyzje logiczne
+- **Impulse measurement**: close-to-close (body movement), NIE wick-to-wick (ICT displacement definition)
+- **Touch definition**: wick wchodzi w strefę OB, close NIE przebija granicy — OB pozostaje aktywny
+- **Graceful degradation**: < 14 świec → empty list + structlog warning, bez wyjątku
+- **Spójność**: `is_valid=False` gwarantuje `quality.passed=False` (wymuszane w `detect()`)
+
+### Structure Analyzer — decyzje logiczne (po audycie Claude, 2026-03-07)
+- `_determine_trend()`: używa `>` (nie `>=`) — eliminuje false bullish przy równych HH/LH
+- `_determine_trend()`: analizuje `swings[-4:-1]` — wyklucza ostatni swing (potencjalny CHoCH) z oceny trendu
+- **Tech Debt Faza 2**: CHoCH wg ICT powinien wymagać przebicia poprzedniego SH/SL; obecna implementacja uproszczona
+
+---
+
+## 15c. Harmonogram implementacji (9 tygodni)
 
 | Tydzień | Cel | Definition of Done |
 |---------|-----|--------------------|
@@ -339,6 +382,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | 9 | Optimizer + Launch | Optimizer Agent aktywny, kanał publiczny |
 
 Faza 2 (po 3+ mies.): COT module, CVD prawdziwy dla BTC, Fear&Greed, XGBoost.
+Faza 2 Tech Debt SMC: CHoCH z wymaganym przebiciem SH/SL, sprzeczne wyniki _detect_choch/_detect_bos dla ranging.
 
 ---
 

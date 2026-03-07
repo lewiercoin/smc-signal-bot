@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from smc.utils import calculate_atr_series
+
 if TYPE_CHECKING:
     from connectors.oanda_client import Candle
     from smc.swing_detector import SwingResult
@@ -153,7 +155,7 @@ class OrderBlockDetector:
         Returns:
             List of bullish OrderBlock instances (without quality/validity set).
         """
-        atr_values = self._calculate_atr(candles)
+        atr_values = calculate_atr_series(candles, _ATR_PERIOD)
         obs: list[OrderBlock] = []
 
         for i in range(1, len(candles)):
@@ -201,7 +203,7 @@ class OrderBlockDetector:
         Returns:
             List of bearish OrderBlock instances (without quality/validity set).
         """
-        atr_values = self._calculate_atr(candles)
+        atr_values = calculate_atr_series(candles, _ATR_PERIOD)
         obs: list[OrderBlock] = []
 
         for i in range(1, len(candles)):
@@ -316,43 +318,3 @@ class OrderBlockDetector:
 
         return ob_touches <= _MAX_OB_TOUCHES
 
-    def _calculate_atr(self, candles: list[Candle]) -> list[float | None]:
-        """Calculate ATR(14) for each candle using Wilder's smoothing.
-
-        Returns a list of ATR values aligned with candles index.
-        First (_ATR_PERIOD - 1) values are None (insufficient data).
-
-        Args:
-            candles: Full candle list
-
-        Returns:
-            List of ATR values (None where insufficient data).
-        """
-        n = len(candles)
-        atr_values: list[float | None] = [None] * n
-
-        true_ranges: list[float] = []
-        for i in range(1, n):
-            high = candles[i].high
-            low = candles[i].low
-            prev_close = candles[i - 1].close
-            tr = max(
-                high - low,
-                abs(high - prev_close),
-                abs(low - prev_close),
-            )
-            true_ranges.append(tr)
-
-        if len(true_ranges) < _ATR_PERIOD:
-            return atr_values
-
-        initial_atr = sum(true_ranges[:_ATR_PERIOD]) / _ATR_PERIOD
-        atr_values[_ATR_PERIOD] = initial_atr
-
-        current_atr = initial_atr
-        for i in range(_ATR_PERIOD + 1, n):
-            tr_idx = i - 1
-            current_atr = (current_atr * (_ATR_PERIOD - 1) + true_ranges[tr_idx]) / _ATR_PERIOD
-            atr_values[i] = current_atr
-
-        return atr_values

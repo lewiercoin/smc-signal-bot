@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from smc.utils import calculate_atr_scalar
+
 if TYPE_CHECKING:
     from connectors.oanda_client import Candle
 
@@ -151,7 +153,7 @@ class SwingDetector:
 
         # Calculate recent ATR (last period candles)
         recent_candles = candles[-self.ATR_PERIOD :]
-        recent_atr = self._calculate_atr(recent_candles, self.ATR_PERIOD)
+        recent_atr = calculate_atr_scalar(recent_candles, self.ATR_PERIOD)
 
         # Calculate historical ATR (candles before the recent ones)
         historical_candles = candles[: -self.ATR_PERIOD]
@@ -165,7 +167,7 @@ class SwingDetector:
             end_idx = len(historical_candles) - i
             start_idx = end_idx - self.ATR_PERIOD
             if start_idx >= 0:
-                atr = self._calculate_atr(
+                atr = calculate_atr_scalar(
                     historical_candles[start_idx:end_idx], self.ATR_PERIOD
                 )
                 atr_values.append(atr)
@@ -254,7 +256,7 @@ class SwingDetector:
 
         # Calculate recent ATR (last few candles)
         recent_candles = candles[-self.ATR_PERIOD :]
-        recent_atr = self._calculate_atr(recent_candles, self.ATR_PERIOD)
+        recent_atr = calculate_atr_scalar(recent_candles, self.ATR_PERIOD)
 
         # Calculate historical ATR (candles before the recent ones)
         historical_candles = candles[: -self.ATR_PERIOD]
@@ -268,7 +270,7 @@ class SwingDetector:
             end_idx = len(historical_candles) - i
             start_idx = end_idx - self.ATR_PERIOD
             if start_idx >= 0:
-                atr = self._calculate_atr(
+                atr = calculate_atr_scalar(
                     historical_candles[start_idx:end_idx], self.ATR_PERIOD
                 )
                 atr_values.append(atr)
@@ -288,38 +290,6 @@ class SwingDetector:
         elif atr_ratio < self.LOW_VOL_THRESHOLD:
             return "low"
         return "normal"
-
-    def _calculate_atr(self, candles: list[Candle], period: int) -> float:
-        """Calculate Average True Range for the given candles.
-
-        Args:
-            candles: List of OHLCV candles
-            period: ATR calculation period
-
-        Returns:
-            ATR value as float
-        """
-        if len(candles) < period:
-            period = len(candles)
-
-        true_ranges: list[float] = []
-
-        for i in range(1, period):
-            current = candles[i]
-            previous = candles[i - 1]
-
-            # True Range = max(high-low, |high-prev_close|, |low-prev_close|)
-            tr1 = current.high - current.low
-            tr2 = abs(current.high - previous.close)
-            tr3 = abs(current.low - previous.close)
-
-            true_range = max(tr1, tr2, tr3)
-            true_ranges.append(true_range)
-
-        if not true_ranges:
-            return 0.0
-
-        return sum(true_ranges) / len(true_ranges)
 
     def _find_swing_highs(
         self,
