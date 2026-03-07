@@ -73,17 +73,16 @@ Wpływ na scoring:
 ⚠️ WAŻNE: Dla EUR/USD i XAU/USD OANDA daje tick volume (proxy).
 Dla BTC/USD używaj prawdziwego wolumenu z Binance przez CCXT.
 
-### [GROK-2] Dynamic swing_length (`utils/dynamic_swing.py`)
-ATR-adaptive w zakresie 16–40. Bazy: EUR=28, XAU=24, BTC=18.
+### [GROK-2] Dynamic swing_length (`smc/swing_detector.py`)
+ATR-adaptive. Trzy wartości: 7 (low vol), 10 (base), 14 (high vol).
 
-Reżimy i mnożniki:
-- EXTREME (ATR ratio ≥ 2.0): × 0.55 → clamp do 16
-- HIGH (1.4–2.0): × 0.72
-- NORMAL (0.8–1.4): × 1.00 (baza)
-- LOW (0.5–0.8): × 1.30
-- FLAT (< 0.5): × 1.55 → clamp do 40
+Progi ATR:
+- HIGH volatility (ATR ratio > 1.5× avg): swing_length = 14
+- NORMAL (0.7×–1.5×): swing_length = 10 (baza)
+- LOW volatility (ATR ratio < 0.7× avg): swing_length = 7
 
-ATR ratio = bieżący ATR% / mediana ATR% z ostatnich 50 świec.
+Stabilność: zmiana następuje dopiero gdy nowa wartość utrzymuje się przez **3 kolejne świece**.
+ATR ratio = bieżący ATR(14) / średnia historyczna ATR z ostatnich 50 świec.
 Loguj `swing_length_used` i `volatility_regime` do tabeli `signals`.
 
 ### [GROK-3] Weekly Optimizer Agent (`agents/optimizer_agent.py`)
@@ -117,7 +116,7 @@ IPDA 40-60%                         → hard reject (nie score, blokada)
 **Progi decyzyjne:**
 - score < 60 → odrzuć, nie wywołuj agentów
 - score ≥ 60 → wywołaj AI Agentów 1–4
-- score ≥ 70 → opublikuj na kanale Telegram
+- score ≥ 65 → opublikuj na kanale Telegram
 
 ---
 
@@ -141,9 +140,9 @@ Period = ostatnia kompletna świeca Weekly (lub Daily z configu `bias` timeframe
 
 | Sesja | UTC | Mnożnik | Efektywny próg |
 |-------|-----|---------|----------------|
-| London open | 08:00–10:00 | 1.0× | 70 |
-| NY open | 13:00–15:00 | 1.0× | 70 |
-| London-NY overlap | 13:00–17:00 | 0.9× | 63 (obniżony!) |
+| London open | 08:00–10:00 | 1.0× | 65 |
+| NY open | 13:00–15:00 | 1.0× | 65 |
+| London-NY overlap | 13:00–17:00 | 0.9× | 59 (obniżony!) |
 | Azja | 00:00–07:00 | 1.25× | 88 (blokuj) |
 | Weekend | — | ∞ | blokuj całkowicie |
 
@@ -327,13 +326,19 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 
 ## 15. Stan implementacji (bieżący)
 
-### Ukończone moduły (Tydzień 2–3 w toku)
+### Status tygodni
+
+- **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
+- **Tydzień 2:** 🔄 W TOKU (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ⬜)
+- **Tydzień 3:** ⬜ NIE ROZPOCZĘTY (Confluence Engine + News API)
+
+### Ukończone moduły (Tydzień 2 w toku)
 
 | Moduł | Status | Testy | Commit |
 |-------|--------|-------|--------|
-| `connectors/oanda_client.py` | ✅ | — | — |
-| `db/schema.sql` | ✅ | — | — |
-| `dq/validators.py` | ✅ | — | — |
+| `connectors/oanda_client.py` | ✅ | 19 | — |
+| `db/database.py` | ✅ | 17 | — |
+| `dq/data_quality.py` | ✅ | 25 | — |
 | `smc/swing_detector.py` | ✅ | 9 | — |
 | `smc/structure_analyzer.py` | ✅ | 10 | `11357ee` |
 | `smc/ob_detector.py` | ✅ | 11 | `640f568` |
