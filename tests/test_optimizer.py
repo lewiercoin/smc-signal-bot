@@ -86,9 +86,9 @@ def test_optimizer_agent_name() -> None:
 
 
 def test_optimizer_temperature() -> None:
-    """config.temperature == 0.4."""
+    """config.temperature == 0.1."""
     agent = Optimizer(api_client=MagicMock())
-    assert agent.config.temperature == 0.4
+    assert agent.config.temperature == 0.1
 
 
 def test_optimizer_cache_ttl() -> None:
@@ -179,9 +179,9 @@ def test_parse_llm_response_invalid_json() -> None:
 
 
 def test_parse_llm_response_safety_guard_risk() -> None:
-    """Sugestia max_risk_per_trade > 3% → odrzucona (safety guard)."""
+    """Sugestia max_risk_per_trade → odrzucona przez denylist."""
     agent = Optimizer(api_client=MagicMock())
-    trade_history = _make_trade_history(5)
+    trade_history = _make_trade_history(10)
     metrics = agent._calculate_metrics(trade_history)
     input_data = {"trade_history": trade_history, "metrics": metrics}
 
@@ -192,7 +192,7 @@ def test_parse_llm_response_safety_guard_risk() -> None:
             {
                 "parameter": "max_risk_per_trade",
                 "current_value": "0.02",
-                "suggested_value": "0.05",  # > 3% — powinno być odrzucone
+                "suggested_value": "0.05",
                 "reasoning": "Higher risk for more profit",
             }
         ],
@@ -205,13 +205,12 @@ def test_parse_llm_response_safety_guard_risk() -> None:
     suggestion = result.raw_data["suggestions"][0]
     assert "note" in suggestion
     assert "Rejected" in suggestion["note"]
-    assert "3%" in suggestion["note"]
 
 
 def test_parse_llm_response_safety_guard_threshold() -> None:
-    """Sugestia confluence_threshold < 50 → odrzucona (safety guard)."""
+    """Sugestia confluence_threshold < 55 (poniżej range min) → odrzucona."""
     agent = Optimizer(api_client=MagicMock())
-    trade_history = _make_trade_history(5)
+    trade_history = _make_trade_history(10)
     metrics = agent._calculate_metrics(trade_history)
     input_data = {"trade_history": trade_history, "metrics": metrics}
 
@@ -222,7 +221,7 @@ def test_parse_llm_response_safety_guard_threshold() -> None:
             {
                 "parameter": "confluence_threshold",
                 "current_value": "65",
-                "suggested_value": "40",  # < 50 — powinno być odrzucone
+                "suggested_value": "40",  # < 55 min — powinno być odrzucone
                 "reasoning": "Lower threshold for more signals",
             }
         ],
@@ -235,7 +234,6 @@ def test_parse_llm_response_safety_guard_threshold() -> None:
     suggestion = result.raw_data["suggestions"][0]
     assert "note" in suggestion
     assert "Rejected" in suggestion["note"]
-    assert "50" in suggestion["note"]
 
 
 # ── _calculate_metrics ─────────────────────────────────────────────────────────
@@ -318,9 +316,9 @@ def test_calculate_metrics_by_session() -> None:
 
 
 def test_deterministic_insufficient_data() -> None:
-    """<5 tradów → 'needs_tuning', puste suggestions, 'Insufficient data'."""
+    """<30 tradów → puste suggestions, 'Insufficient data', confidence=0.1."""
     agent = Optimizer(api_client=MagicMock())
-    trade_history = _make_trade_history(3)
+    trade_history = _make_trade_history(10)
     metrics = agent._calculate_metrics(trade_history)
     input_data = {"trade_history": trade_history, "metrics": metrics}
 
@@ -328,17 +326,18 @@ def test_deterministic_insufficient_data() -> None:
 
     assert result.raw_data["suggestions"] == []
     assert "Insufficient data" in result.reasoning
-    assert result.confidence == pytest.approx(0.2, abs=0.01)
+    assert "performing" not in result.reasoning.lower()
+    assert result.confidence == pytest.approx(0.1, abs=0.01)
     assert result.bias == MarketBias.NEUTRAL
 
 
 def test_deterministic_performing_well() -> None:
     """win_rate>60% + PF>1.5 → 'performing_well', puste suggestions."""
     agent = Optimizer(api_client=MagicMock())
-    # 8 wygranych (r=3.0), 2 przegrane (r=-1.0) → WR=80%, PF=12/2=6.0
+    # 24 wygranych (r=3.0), 6 przegranych (r=-1.0) → WR=80%, PF=12.0, n=30
     trades = (
-        [_make_trade(result="tp2_hit", r_achieved=3.0)] * 8
-        + [_make_trade(result="sl_hit", r_achieved=-1.0)] * 2
+        [_make_trade(result="tp2_hit", r_achieved=3.0)] * 24
+        + [_make_trade(result="sl_hit", r_achieved=-1.0)] * 6
     )
     metrics = agent._calculate_metrics(trades)
     input_data = {"trade_history": trades, "metrics": metrics}
@@ -353,10 +352,10 @@ def test_deterministic_performing_well() -> None:
 def test_deterministic_underperforming() -> None:
     """win_rate<40% → sugestia podniesienia confluence_threshold."""
     agent = Optimizer(api_client=MagicMock())
-    # 3 wygrane (r=1.5), 7 przegranych (r=-1.0) → WR=30%
+    # 9 wygranych (r=1.5), 21 przegranych (r=-1.0) → WR=30%, n=30
     trades = (
-        [_make_trade(result="tp1_hit", r_achieved=1.5)] * 3
-        + [_make_trade(result="sl_hit", r_achieved=-1.0)] * 7
+        [_make_trade(result="tp1_hit", r_achieved=1.5)] * 9
+        + [_make_trade(result="sl_hit", r_achieved=-1.0)] * 21
     )
     metrics = agent._calculate_metrics(trades)
     input_data = {"trade_history": trades, "metrics": metrics}
@@ -375,10 +374,10 @@ def test_deterministic_underperforming() -> None:
 def test_deterministic_low_avg_r() -> None:
     """avg_r<1.0 + win_rate>=40% → sugestia TP1 adjustment."""
     agent = Optimizer(api_client=MagicMock())
-    # 5 wygranych (r=0.5), 5 przegranych (r=-0.4) → WR=50%, avg_r=0.05
+    # 15 wygranych (r=0.5), 15 przegranych (r=-0.4) → WR=50%, avg_r=0.05, n=30
     trades = (
-        [_make_trade(result="tp1_hit", r_achieved=0.5)] * 5
-        + [_make_trade(result="sl_hit", r_achieved=-0.4)] * 5
+        [_make_trade(result="tp1_hit", r_achieved=0.5)] * 15
+        + [_make_trade(result="sl_hit", r_achieved=-0.4)] * 15
     )
     metrics = agent._calculate_metrics(trades)
     input_data = {"trade_history": trades, "metrics": metrics}
@@ -392,11 +391,10 @@ def test_deterministic_low_avg_r() -> None:
 def test_deterministic_session_underperforming() -> None:
     """Sesja <30% win rate + >=5 tradów → sugestia review dla tej sesji."""
     agent = Optimizer(api_client=MagicMock())
-    # London: 7 wygranych → WR dobre
-    # New York: 1 wygrana, 6 przegranych → WR=14%
+    # London: 21 wygranych → WR dobre; New York: 3 wygrane, 6 przegranych → WR=33% (total=30)
     trades = (
-        [_make_trade(session="London", result="tp1_hit", r_achieved=2.0)] * 7
-        + [_make_trade(session="New York", result="tp1_hit", r_achieved=2.0)] * 1
+        [_make_trade(session="London", result="tp1_hit", r_achieved=2.0)] * 21
+        + [_make_trade(session="New York", result="tp1_hit", r_achieved=2.0)] * 3
         + [_make_trade(session="New York", result="sl_hit", r_achieved=-1.0)] * 6
     )
     metrics = agent._calculate_metrics(trades)
@@ -422,21 +420,24 @@ def test_deterministic_max_3_suggestions() -> None:
     # Ale underperforming ma WR<40%, więc tylko ta reguła działa
     # Dodajemy 2 złe sesje żeby wymusić wiele sugestii
     metrics = {
-        "total_trades": 10,
+        "total_trades": 30,  # min 30 aby nie było insufficient_data
         "win_rate": 30.0,  # underperforming → 1 sugestia
         "avg_r": 0.5,
         "best_r": 1.5,
         "worst_r": -1.0,
         "profit_factor": 0.6,
+        "max_drawdown": -3.0,
+        "expectancy": -0.2,
+        "max_consecutive_losses": 5,
         "by_instrument": {},
         "by_session": {
             # Te sesje powinny dodać po 1 sugestii każda
-            "London": {"trades": 5, "win_rate": 20.0, "avg_r": -0.5},
-            "New York": {"trades": 5, "win_rate": 20.0, "avg_r": -0.5},
-            "Asia": {"trades": 5, "win_rate": 10.0, "avg_r": -1.0},
+            "London": {"trades": 10, "win_rate": 20.0, "avg_r": -0.5},
+            "New York": {"trades": 10, "win_rate": 20.0, "avg_r": -0.5},
+            "Asia": {"trades": 10, "win_rate": 10.0, "avg_r": -1.0},
         },
         "by_setup": {},
-        "tp_distribution": {"tp1_hit": 3, "tp2_hit": 0, "tp3_hit": 0, "sl_hit": 7, "breakeven": 0},
+        "tp_distribution": {"tp1_hit": 9, "tp2_hit": 0, "tp3_hit": 0, "sl_hit": 21, "breakeven": 0},
         "period_days": 7,
     }
     input_data = {"trade_history": [], "metrics": metrics}
@@ -475,7 +476,7 @@ def test_optimize_wrapper() -> None:
             timestamp=datetime.now(timezone.utc),
             raw_data={"metrics": {}, "suggestions": [], "period_days": 0},
         )
-        trade_history = _make_trade_history(5)
+        trade_history = _make_trade_history(30)  # min 30 — bez early-return
         agent.optimize(trade_history)
 
         mock_analyze.assert_called_once()
@@ -499,7 +500,7 @@ def test_bias_always_neutral() -> None:
 def test_bias_neutral_from_parse_llm_response() -> None:
     """_parse_llm_response zawsze zwraca bias=NEUTRAL."""
     agent = Optimizer(api_client=MagicMock())
-    trade_history = _make_trade_history(5)
+    trade_history = _make_trade_history(10)
     metrics = agent._calculate_metrics(trade_history)
     input_data = {"trade_history": trade_history, "metrics": metrics}
 
@@ -520,7 +521,7 @@ def test_optimize_uses_deterministic_when_llm_fails() -> None:
     mock_client.messages.create.side_effect = RuntimeError("API timeout")
 
     agent = Optimizer(api_client=mock_client)
-    trade_history = _make_trade_history(10, win_rate=0.5, avg_r=1.5)
+    trade_history = _make_trade_history(30, win_rate=0.5, avg_r=1.5)
 
     result = agent.optimize(trade_history)
 
@@ -549,3 +550,346 @@ def test_calculate_metrics_tp_distribution() -> None:
     assert tp["tp3_hit"] == 1
     assert tp["sl_hit"] == 2
     assert tp["breakeven"] == 1
+
+
+# ── Krok 1: Denylist tests ─────────────────────────────────────────────────────
+
+
+def test_denylist_rejects_max_risk_per_trade() -> None:
+    """max_risk_per_trade → odrzucony przez denylist niezależnie od wartości."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "max_risk_per_trade",
+                "current_value": "0.02",
+                "suggested_value": "0.025",
+                "reasoning": "Small increase",
+            }
+        ],
+        "summary": "Tiny risk increase.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "forbidden risk parameter" in note
+
+
+def test_denylist_rejects_circuit_breaker() -> None:
+    """circuit_breaker_daily_loss → odrzucony przez denylist."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "circuit_breaker_daily_loss",
+                "current_value": "0.03",
+                "suggested_value": "0.05",
+                "reasoning": "Relax daily stop",
+            }
+        ],
+        "summary": "Relax circuit breaker.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "forbidden risk parameter" in note
+
+
+# ── Krok 1: Whitelist tests ────────────────────────────────────────────────────
+
+
+def test_whitelist_rejects_unknown_parameter() -> None:
+    """Nieznany parametr (np. ob_tap_count) → odrzucony przez whitelist."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "ob_tap_count",
+                "current_value": "3",
+                "suggested_value": "2",
+                "reasoning": "Allow more taps",
+            }
+        ],
+        "summary": "Adjust OB taps.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "unknown parameter" in note
+
+
+# ── Krok 1: Type parsing tests ─────────────────────────────────────────────────
+
+
+def test_type_parsing_valid_int_confluence() -> None:
+    """confluence_threshold='67' → parsowany do int 67, przechodzi."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.6,
+        "suggestions": [
+            {
+                "parameter": "confluence_threshold",
+                "current_value": "65",
+                "suggested_value": "67",
+                "reasoning": "Slightly more selective",
+            }
+        ],
+        "summary": "Minor threshold increase.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    suggestions = [s for s in result.raw_data["suggestions"] if "note" not in s]
+    assert len(suggestions) == 1
+    assert suggestions[0]["parameter"] == "confluence_threshold"
+    assert suggestions[0]["suggested_value"] == "67"
+
+
+def test_type_parsing_invalid_rejects() -> None:
+    """confluence_threshold='abc' → błąd parsowania, odrzucone."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "confluence_threshold",
+                "current_value": "65",
+                "suggested_value": "abc",
+                "reasoning": "Invalid value",
+            }
+        ],
+        "summary": "Bad value.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "invalid numeric value" in note
+
+
+# ── Krok 1: Delta check tests ──────────────────────────────────────────────────
+
+
+def test_delta_exceeds_20pct_rejected() -> None:
+    """tp1_ratio 1.5→1.9 (26.7% zmiana) → odrzucone (>20% limit)."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "tp1_ratio",
+                "current_value": "1.5",
+                "suggested_value": "1.9",  # 26.7% zmiana od CURRENT_VALUES=1.5
+                "reasoning": "Big jump",
+            }
+        ],
+        "summary": "Large tp1 change.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "exceeds" in note
+    assert "20%" in note
+
+
+def test_delta_within_20pct_accepted() -> None:
+    """confluence_threshold 65→68 (4.6% zmiana) → przechodzi delta check."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.6,
+        "suggestions": [
+            {
+                "parameter": "confluence_threshold",
+                "current_value": "65",
+                "suggested_value": "68",
+                "reasoning": "Small improvement",
+            }
+        ],
+        "summary": "Small threshold increase.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    accepted = [s for s in result.raw_data["suggestions"] if "note" not in s]
+    assert len(accepted) == 1
+    assert accepted[0]["parameter"] == "confluence_threshold"
+
+
+def test_delta_uses_source_of_truth_not_llm_value() -> None:
+    """LLM podaje current_value='50' (halucynacja), ale delta liczy od CURRENT_VALUES[1.5]."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "tp1_ratio",
+                "current_value": "1.0",  # halucynacja LLM — prawdziwa wartość to 1.5
+                "suggested_value": "1.9",  # 1.9 vs CURRENT_VALUES=1.5 → 26.7% → odrzucone
+                "reasoning": "Large change from hallucinated baseline",
+            }
+        ],
+        "summary": "Test delta from source.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "exceeds" in note
+
+
+# ── Krok 2: Early-return / min sample tests ────────────────────────────────────
+
+
+def test_optimize_early_return_29_trades() -> None:
+    """29 tradów → early return przed LLM, tier_used==DETERMINISTIC, brak sugestii."""
+    mock_client = MagicMock()
+    agent = Optimizer(api_client=mock_client)
+    trade_history = _make_trade_history(29, win_rate=0.5, avg_r=1.5)
+
+    result = agent.optimize(trade_history)
+
+    assert result.tier_used == AgentTier.DETERMINISTIC
+    assert result.raw_data["suggestions"] == []
+    assert "Insufficient data" in result.reasoning
+    mock_client.messages.create.assert_not_called()
+
+
+def test_optimize_30_trades_reaches_llm() -> None:
+    """30 tradów → LLM wywoływane (nie early-return)."""
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = MagicMock(
+        content=[MagicMock(text=json.dumps({
+            "overall_assessment": "performing_well",
+            "confidence": 0.8,
+            "suggestions": [],
+            "summary": "Strategy is fine.",
+        }))]
+    )
+
+    agent = Optimizer(api_client=mock_client)
+    trade_history = _make_trade_history(30, win_rate=0.65, avg_r=1.8)
+
+    result = agent.optimize(trade_history)
+
+    mock_client.messages.create.assert_called_once()
+    assert result.tier_used == AgentTier.LLM
+
+
+# ── Krok 3: New metrics tests ──────────────────────────────────────────────────
+
+
+def test_calculate_metrics_drawdown() -> None:
+    """Max drawdown: equity [-1, +3, -2, +1] → peak-to-trough poprawny."""
+    agent = Optimizer(api_client=MagicMock())
+    # r_values = [-1, +3, -2, +1]
+    # equity = [-1, 2, 0, 1]
+    # peaks  = [-1, 2, 2, 2]
+    # dd     = [0, 0, -2, -1] → max_dd = -2.0
+    trades = [
+        _make_trade(result="sl_hit",  r_achieved=-1.0),
+        _make_trade(result="tp2_hit", r_achieved=3.0),
+        _make_trade(result="sl_hit",  r_achieved=-2.0),
+        _make_trade(result="tp1_hit", r_achieved=1.0),
+    ]
+    metrics = agent._calculate_metrics(trades)
+
+    assert metrics["max_drawdown"] == pytest.approx(-2.0, abs=0.01)
+
+
+def test_calculate_metrics_expectancy() -> None:
+    """Expectancy: WR=50%, avg_win=2.0, avg_loss=1.0 → expectancy=0.5."""
+    agent = Optimizer(api_client=MagicMock())
+    trades = (
+        [_make_trade(result="tp1_hit", r_achieved=2.0)] * 5
+        + [_make_trade(result="sl_hit",  r_achieved=-1.0)] * 5
+    )
+    metrics = agent._calculate_metrics(trades)
+
+    assert metrics["expectancy"] == pytest.approx(0.5, abs=0.01)
+
+
+def test_calculate_metrics_consecutive_losses() -> None:
+    """[+1, -1, -1, -1, +1] → max_consecutive_losses=3."""
+    agent = Optimizer(api_client=MagicMock())
+    trades = [
+        _make_trade(result="tp1_hit", r_achieved=1.0),
+        _make_trade(result="sl_hit",  r_achieved=-1.0),
+        _make_trade(result="sl_hit",  r_achieved=-1.0),
+        _make_trade(result="sl_hit",  r_achieved=-1.0),
+        _make_trade(result="tp1_hit", r_achieved=1.0),
+    ]
+    metrics = agent._calculate_metrics(trades)
+
+    assert metrics["max_consecutive_losses"] == 3
+
+
+def test_calculate_metrics_new_fields_in_empty() -> None:
+    """Pusta lista → nowe metryki obecne z wartościami zerowymi."""
+    agent = Optimizer(api_client=MagicMock())
+    metrics = agent._calculate_metrics([])
+
+    assert metrics["max_drawdown"] == 0.0
+    assert metrics["expectancy"] == 0.0
+    assert metrics["max_consecutive_losses"] == 0
+
+
+def test_build_prompt_contains_new_metrics() -> None:
+    """User prompt zawiera max drawdown, expectancy, consecutive losses."""
+    agent = Optimizer(api_client=MagicMock())
+    trade_history = _make_trade_history(10, win_rate=0.5, avg_r=1.5)
+    metrics = agent._calculate_metrics(trade_history)
+    input_data = {"trade_history": trade_history, "metrics": metrics}
+    _, user_prompt = agent._build_prompt(input_data)
+
+    assert "Max drawdown" in user_prompt
+    assert "Expectancy" in user_prompt
+    assert "Max consecutive losses" in user_prompt
+
+
+def test_build_prompt_no_max_risk_in_tunables() -> None:
+    """System prompt NIE zawiera max_risk_per_trade w sekcji TUNABLE PARAMETERS."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+    system_prompt, _ = agent._build_prompt(input_data)
+
+    assert "FORBIDDEN" in system_prompt
+    assert "max_risk_per_trade" in system_prompt
+    tunable_section = system_prompt.split("FORBIDDEN")[0]
+    assert "max_risk_per_trade: 2%" not in tunable_section

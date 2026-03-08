@@ -435,11 +435,16 @@ TelegramEditor: temp=0.3, max_tokens=512, formatuje sygnał na Telegram message
   PIP_VALUES: importowane z engine/risk_engine.PIP_VALUES
   _parse_llm_response: truncate >500 znaków, auto-dopisuje disclaimer jeśli brak
   Nie używa _now — sesja przychodzi w input_data["session"] z pipeline
-Optimizer: temp=0.4, max_tokens=2048, cache_ttl=7d, weekly analysis
+Optimizer: temp=0.1, max_tokens=2048, cache_ttl=7d, weekly analysis
   System prompt contains "Do NOT suggest changes to SMC detection logic"
   System prompt contains "Do NOT suggest adding new indicators"
   GROK-3: weekly optimization, READ-ONLY (suggests, nie auto-applies)
-  Safety guards: risk ≤ 3%, threshold ≥ 50, max 3 suggestions
+  Safety guards (5-layer): DENYLIST (risk params) → WHITELIST → type parse → range [min,max] → delta ±20% vs CURRENT_VALUES
+  PARAMETER_DENYLIST: max_risk_per_trade, circuit_breaker_*, max_positions, max_risk
+  PARAMETER_WHITELIST: confluence_threshold[55-80], tp1_ratio[1.0-2.5], tp2_ratio[2.0-4.0], tp3_ratio[3.0-6.0], session_filter
+  CURRENT_VALUES: source-of-truth dla delta check (nie LLM's current_value — może być halucynacja)
+  MIN_SAMPLE: 30 tradów — early-return przed LLM gdy za mało danych
+  Metryki: win_rate, avg_r, profit_factor, max_drawdown, expectancy, max_consecutive_losses + by_instrument/session/setup
   Deterministic fallback: rule-based assessment z _calculate_metrics()
   Scheduling: NIE w tym module — będzie w Tygodniu 6
 
