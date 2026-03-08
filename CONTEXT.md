@@ -334,6 +334,8 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 4:** ✅ UKOŃCZONY (Risk Engine ✅, Signal Generator ✅)
 - **Tydzień 5 (Część 1):** ✅ UKOŃCZONY (BaseAgent ✅, StructureAgent ✅, FundamentalAgent ✅)
 - **Tydzień 5 (Część 2):** ✅ UKOŃCZONY (RiskVerifier ✅, TelegramEditor ✅)
+- **Tydzień 5 (Część 3):** ✅ UKOŃCZONY (Optimizer ✅)
+- **Tydzień 5:** ✅ UKOŃCZONY
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -403,10 +405,11 @@ Tydzień 3:
 
 | Tydzień | Moduł | Testy | Commit |
 |---------|-------|-------|--------|
-| 5 | `agents/risk_verifier.py` | 26 | `1d26989` |
+| 5 | `agents/risk_verifier.py` | 18 | `1d26989` |
 | 5 | `agents/telegram_editor.py` | 14 | `1d26989` |
+| 5 | `agents/optimizer.py` | 27 | bieżący |
 
-**Łączna liczba testów: 235 + 40 = 275**
+**Łączna liczba testów: 275 + 27 = 302**
 
 ### AI Agents — architektura
 
@@ -432,8 +435,21 @@ TelegramEditor: temp=0.3, max_tokens=512, formatuje sygnał na Telegram message
   PIP_VALUES: importowane z engine/risk_engine.PIP_VALUES
   _parse_llm_response: truncate >500 znaków, auto-dopisuje disclaimer jeśli brak
   Nie używa _now — sesja przychodzi w input_data["session"] z pipeline
+Optimizer: temp=0.4, max_tokens=2048, cache_ttl=7d, weekly analysis
+  System prompt contains "Do NOT suggest changes to SMC detection logic"
+  System prompt contains "Do NOT suggest adding new indicators"
+  GROK-3: weekly optimization, READ-ONLY (suggests, nie auto-applies)
+  Safety guards: risk ≤ 3%, threshold ≥ 50, max 3 suggestions
+  Deterministic fallback: rule-based assessment z _calculate_metrics()
+  Scheduling: NIE w tym module — będzie w Tygodniu 6
 
-### Następny krok: Tydzień 5 Część 3 — agents/optimizer_agent.py (Agent 5, GROK-3)
+### Tydzień 5 UKOŃCZONY: 5 agentów (StructureAgent, FundamentalAgent, RiskVerifier, TelegramEditor, Optimizer)
+
+Pipeline: Structure → Fundamental → RiskVerifier → TelegramEditor → Telegram
+Optimizer: weekly, offline, READ-ONLY
+3-tier fallback: Cache-first → LLM (Haiku) → Deterministic
+
+### Następny krok: Tydzień 6 — Telegram Bot + Monitoring
 
 - `smc/utils.py` zawiera dwie funkcje ATR (bez pandas-ta, czysta implementacja):
   - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
