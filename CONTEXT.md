@@ -331,7 +331,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
 - **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
 - **Tydzień 3:** ✅ UKOŃCZONY (Confluence Engine + News API)
-- **Tydzień 4:** 🔄 W TRAKCIE (Risk Engine ✅)
+- **Tydzień 4:** ✅ UKOŃCZONY (Risk Engine ✅, Signal Generator ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -347,7 +347,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/fvg_detector.py` | ✅ | 10 | — |
 | `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 176**
+**Łączna liczba testów: 188**
 
 ### Tydzień 2 — SMC Engine UKOŃCZONY
 
@@ -387,9 +387,9 @@ Tydzień 3:
 | Moduł | Status | Testy | Uwagi |
 |-------|--------|-------|-------|
 | `engine/risk_engine.py` | ✅ | 14 | SL swing+ATR, TP 3-poziomy, sizing 2%, spread filter |
-| `engine/signal_generator.py` | ⬜ | — | Następna sesja |
+| `engine/signal_generator.py` | ✅ | 12 | Pełny pipeline: Fetch→DQ→Confluence→Risk→Signal→DB |
 
-### Następny krok: engine/signal_generator.py
+### Następny krok: Tydzień 5 — AI Agents (Agenci 1–4 + Optimizer + 3-tier fallback)
 
 ---
 
