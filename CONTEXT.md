@@ -331,7 +331,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
 - **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
 - **Tydzień 3:** ✅ UKOŃCZONY (Confluence Engine + News API)
-- **Tydzień 4:** ⬜ NIE ROZPOCZĘTY
+- **Tydzień 4:** 🔄 W TRAKCIE (Risk Engine ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -347,7 +347,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/fvg_detector.py` | ✅ | 10 | — |
 | `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 162**
+**Łączna liczba testów: 176**
 
 ### Tydzień 2 — SMC Engine UKOŃCZONY
 
@@ -382,7 +382,14 @@ Tydzień 3:
 - 4 nowe testy w `test_data_quality.py` (`TestNewsWindowUsesRealClient`)
 - `beautifulsoup4` zainstalowany w .venv (fallback scraping)
 
-### Następny krok: Tydzień 4 — Risk Engine + Signal Generator
+### Tydzień 4 — Risk Engine + Signal Generator
+
+| Moduł | Status | Testy | Uwagi |
+|-------|--------|-------|-------|
+| `engine/risk_engine.py` | ✅ | 14 | SL swing+ATR, TP 3-poziomy, sizing 2%, spread filter |
+| `engine/signal_generator.py` | ⬜ | — | Następna sesja |
+
+### Następny krok: engine/signal_generator.py
 
 ---
 
