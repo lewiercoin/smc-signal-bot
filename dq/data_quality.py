@@ -7,11 +7,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from connectors.oanda_client import Candle
+
+if TYPE_CHECKING:
+    from connectors.news_client import NewsClient
 
 logger = structlog.get_logger(__name__)
 
@@ -74,10 +77,16 @@ class DataQualityChecker:
     # News blackout window (±120 min from HIGH impact)
     NEWS_BLACKOUT_MINUTES = 120
 
-    def __init__(self) -> None:
-        """Initialize Data Quality checker."""
+    def __init__(self, news_client: NewsClient | None = None) -> None:
+        """Initialize Data Quality checker.
+
+        Args:
+            news_client: Optional NewsClient for news window checks.
+                If None, a new NewsClient is created on first use.
+                Pass a mock in tests to avoid real API calls.
+        """
         self.logger = logger.bind(module="data_quality")
-        # Mock news calendar - will be replaced with real API in Week 3
+        self._news_client: NewsClient | None = news_client
         self._mock_news_calendar: list[dict[str, Any]] = []
         self.logger.info("data_quality_checker_initialized")
 
@@ -264,62 +273,104 @@ class DataQualityChecker:
     ) -> NewsCheckResult:
         """Check if trading should be blocked due to news.
 
+        If a mock calendar has been set via set_mock_news_calendar(), uses it
+        (backward-compatible path for existing tests).
+        Otherwise delegates to NewsClient.is_news_blocked().
+
+        Fail-safe: any API error → blocked=True.
+
         Args:
             instrument: Target instrument (determines currency check)
-            current_time: Time to check
+            current_time: Time to check (used only in mock-calendar path)
 
         Returns:
             NewsCheckResult with block status and details
-
-        Note: Uses mock calendar. Real Finnhub API integration in Week 3.
         """
-        # Map instrument to relevant currencies
-        currency_map = {
-            "EUR_USD": ["USD", "EUR"],
-            "XAU_USD": ["USD"],  # Gold primarily USD-driven
-            "BTC_USD": ["USD"],
-        }
-        relevant_currencies = currency_map.get(instrument, ["USD"])
+        # ── Mock-calendar path (used by legacy tests) ──────────────────────
+        if self._mock_news_calendar:
+            currency_map = {
+                "EUR_USD": ["USD", "EUR"],
+                "XAU_USD": ["USD"],
+                "BTC_USD": ["USD"],
+            }
+            relevant_currencies = currency_map.get(instrument, ["USD"])
 
-        # Check mock calendar for HIGH impact events
-        # In Week 3, replace with real API call to Finnhub /calendar/economic
-        for event in self._mock_news_calendar:
-            if event.get("impact") != "HIGH":
-                continue
-            if event.get("currency") not in relevant_currencies:
-                continue
+            for event in self._mock_news_calendar:
+                if event.get("impact") != "HIGH":
+                    continue
+                if event.get("currency") not in relevant_currencies:
+                    continue
 
-            event_time = event.get("time")
-            if not isinstance(event_time, datetime):
-                continue
+                event_time = event.get("time")
+                if not isinstance(event_time, datetime):
+                    continue
 
-            # Check if within blackout window
-            window_start = event_time - timedelta(minutes=self.NEWS_BLACKOUT_MINUTES)
-            window_end = event_time + timedelta(minutes=self.NEWS_BLACKOUT_MINUTES)
+                window_start = event_time - timedelta(minutes=self.NEWS_BLACKOUT_MINUTES)
+                window_end = event_time + timedelta(minutes=self.NEWS_BLACKOUT_MINUTES)
 
-            if window_start <= current_time <= window_end:
-                next_clear = window_end
-                reason = (
-                    f"HIGH impact {event.get('currency')} news at {event_time}"
-                )
+                if window_start <= current_time <= window_end:
+                    next_clear = window_end
+                    reason = (
+                        f"HIGH impact {event.get('currency')} news at {event_time}"
+                    )
+                    self.logger.warning(
+                        "news_window_blocked",
+                        instrument=instrument,
+                        news_event=event.get("name"),
+                        reason=reason,
+                    )
+                    return NewsCheckResult(
+                        blocked=True,
+                        reason=reason,
+                        next_clear=next_clear,
+                    )
+
+            self.logger.info(
+                "news_window_clear",
+                instrument=instrument,
+                current_time=current_time,
+            )
+            return NewsCheckResult(blocked=False)
+
+        # ── Real NewsClient path ───────────────────────────────────────────
+        try:
+            from connectors.news_client import NewsClient as _NewsClient  # noqa: PLC0415
+
+            client = self._news_client
+            if client is None:
+                client = _NewsClient()
+                self._news_client = client
+
+            nc_result = client.is_news_blocked(
+                pair=instrument,
+                window_minutes=self.NEWS_BLACKOUT_MINUTES,
+            )
+            if nc_result.is_blocked:
                 self.logger.warning(
                     "news_window_blocked",
                     instrument=instrument,
-                    news_event=event.get("name"),
-                    reason=reason,
+                    reason=nc_result.reason,
                 )
                 return NewsCheckResult(
                     blocked=True,
-                    reason=reason,
-                    next_clear=next_clear,
+                    reason=nc_result.reason,
                 )
+            self.logger.info(
+                "news_window_clear",
+                instrument=instrument,
+            )
+            return NewsCheckResult(blocked=False)
 
-        self.logger.info(
-            "news_window_clear",
-            instrument=instrument,
-            current_time=current_time,
-        )
-        return NewsCheckResult(blocked=False)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.error(
+                "news_window_check_failed",
+                instrument=instrument,
+                error=str(exc),
+            )
+            return NewsCheckResult(
+                blocked=True,
+                reason=f"News check error — fail-safe block: {exc}",
+            )
 
     def set_mock_news_calendar(self, events: list[dict[str, Any]]) -> None:
         """Set mock news calendar for testing.

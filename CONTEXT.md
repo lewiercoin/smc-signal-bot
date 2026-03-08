@@ -347,7 +347,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/fvg_detector.py` | ✅ | 10 | — |
 | `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 158**
+**Łączna liczba testów: 162**
 
 ### Tydzień 2 — SMC Engine UKOŃCZONY
 
@@ -372,10 +372,14 @@ Tydzień 3:
 | `engine/confluence_scorer.py` | ✅ | 22 | Pełny scoring 0-110 pkt, GROK-1 absorption |
 | `engine/__init__.py` | ✅ | — | Package init |
 
-Uwagi do integracji (Tydzień 4):
-- `NewsClient.is_news_blocked(pair)` zwraca `NewsCheckResult(is_blocked=...)`
-- `NewsCheckResult` w `news_client.py` używa `is_blocked` (nie `blocked` jak w `data_quality.py`)
-- Podmiana mock → real API w `data_quality.py` jako osobny krok w Tygodniu 4
+### Integracja news_client → data_quality ✅ (pre-Tydzień 4)
+
+- `DataQualityChecker.__init__` przyjmuje opcjonalny `news_client: NewsClient | None`
+- `check_news_window()`: gdy mock calendar pusty → deleguje do `NewsClient.is_news_blocked()`
+- Mapowanie: `NewsCheckResult.is_blocked` (news_client) → `NewsCheckResult.blocked` (data_quality)
+- Fail-safe zachowany: brak klucza / error → `blocked=True`
+- Backward compat: `set_mock_news_calendar()` nadal działa (stare testy bez zmian)
+- 4 nowe testy w `test_data_quality.py` (`TestNewsWindowUsesRealClient`)
 - `beautifulsoup4` zainstalowany w .venv (fallback scraping)
 
 ### Następny krok: Tydzień 4 — Risk Engine + Signal Generator
@@ -424,7 +428,51 @@ Uwagi do integracji (Tydzień 4):
 
 ---
 
-## 15c. Harmonogram implementacji (9 tygodni)
+## 15c. Audyt post-T3 (marzec 2026)
+
+### Naprawione (P1/P2)
+
+- **[P1 NAPRAWIONE]** `engine/confluence_scorer.py` — `_score_absorption` miała odwrócony warunek `body_ratio`.
+  Specyfikacja GROK-1: `body_ratio ≤ 0.30` (mała świeca = absorption). Kod używał `> 0.70` (duże ciało).
+  Naprawiono + dodano per-instrument progi (BTC: body_max=0.25, vol_min=2.0; Forex: body_max=0.30, vol_min=1.5).
+  `_score_absorption` przyjmuje teraz `pair` jako parametr.
+
+### Tech Debt Faza 2 (P3)
+
+- **[P3]** `db/database.py` — tabela `signals` nie ma pól v2.2: `bar_ratio`, `rvr_ratio`, `ob_tap_count`,
+  `ob_status`, `absorption_detected`, `absorption_type`, `absorption_strength`, `swing_length_used`,
+  `volatility_regime`, `agent1_score`, `agent1_recommendation`, `agent2_sentiment`, `llm_provider`,
+  `trigger_tf`. Dodać w Tygodniu 7 (przed Paper Trading).
+
+- **[P3]** `smc/swing_detector.py` — `_calculate_dynamic_swing_length()` i `_determine_volatility_regime()`
+  duplikują ~25 linii kodu obliczania ATR ratio. Wyekstrahować do `_calculate_atr_ratio()`.
+
+- **[P3]** `engine/confluence_scorer.py` — `_score_session()` wywołuje `datetime.now()` bezpośrednio
+  (trudne do testowania deterministycznego). Refactor: przyjąć opcjonalny `now: datetime | None = None`.
+
+- **[P3]** `engine/confluence_scorer.py` — brak `_score_news()` komponentu (news blackout ±2h).
+  CONTEXT.md sekcja 5 listuje "Brak news <2h HIGH impact +5/+10 pkt". Tydzień 5.
+
+- **[P3]** `engine/confluence_scorer.py` — brak `_score_dxy()` komponentu (+10 EUR / +5 XAU / 0-5 BTC).
+  Tydzień 5/6.
+
+- **[P3]** `smc/structure_analyzer.py` — CHoCH wymaga wg ICT przebicia poprzedniego SH/SL;
+  obecna implementacja uproszczona (już zanotowane w sekcji 15b).
+
+### Wyniki audytu — podsumowanie
+
+| Obszar | Status |
+|--------|--------|
+| Spójność interfejsów | ✅ OK (po integracji DQ+NewsClient) |
+| Duplikacja kodu | ⚠️ Drobna w swing_detector (P3) |
+| Testy — pokrycie | ✅ 162 testów, dobre edge cases |
+| Logika tradingowa | ✅ OK (OB close-to-close ✓, FVG ✓, sweep ✓, IPDA ✓, body_ratio **naprawione**) |
+| CONTEXT.md zgodność | ✅ Aktualne |
+| Tech Debt | 5 pozycji P3, 0 P1/P2 otwartych |
+
+---
+
+## 15d. Harmonogram implementacji (9 tygodni)
 
 | Tydzień | Cel | Definition of Done |
 |---------|-----|--------------------|

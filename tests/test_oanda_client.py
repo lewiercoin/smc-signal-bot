@@ -5,7 +5,6 @@ Uses pytest and unittest.mock to test OANDA API interactions.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
