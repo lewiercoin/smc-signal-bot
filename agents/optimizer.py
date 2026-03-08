@@ -36,7 +36,7 @@ PARAMETER_WHITELIST: dict[str, dict] = {
     "tp1_ratio":            {"min": 1.0, "max": 2.5, "type": float},
     "tp2_ratio":            {"min": 2.0, "max": 4.0, "type": float},
     "tp3_ratio":            {"min": 3.0, "max": 6.0, "type": float},
-    "session_filter":       {"type": str, "allowed": ["London", "New York", "review"]},
+    "session_filter":       {"type": str, "allowed": ["London", "New York", "disabled"]},
 }
 
 CURRENT_VALUES: dict[str, float | int | str] = {
@@ -684,7 +684,7 @@ class Optimizer(BaseAgent):
                 session_suggestion = {
                     "parameter": "session_filter",
                     "current_value": "enabled",
-                    "suggested_value": "review",
+                    "suggested_value": "disabled",
                     "reasoning": (
                         f"{sess} underperforming ({sess_wr}% win rate over {sess_trades} trades)"
                     ),

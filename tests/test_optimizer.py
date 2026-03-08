@@ -774,6 +774,96 @@ def test_delta_uses_source_of_truth_not_llm_value() -> None:
     assert "exceeds" in note
 
 
+# ── session_filter semantics ──────────────────────────────────────────────────
+
+
+def test_session_filter_fallback_uses_disabled() -> None:
+    """Deterministic fallback generuje suggested_value='disabled' dla słabej sesji."""
+    agent = Optimizer(api_client=MagicMock())
+    metrics = {
+        "total_trades": 30,
+        "win_rate": 55.0,
+        "avg_r": 1.2,
+        "best_r": 3.0,
+        "worst_r": -1.0,
+        "profit_factor": 1.3,
+        "max_drawdown": -1.0,
+        "expectancy": 0.3,
+        "max_consecutive_losses": 2,
+        "by_instrument": {},
+        "by_session": {
+            "London": {"trades": 24, "win_rate": 65.0, "avg_r": 1.5},
+            "New York": {"trades": 6, "win_rate": 16.7, "avg_r": -0.5},
+        },
+        "by_setup": {},
+        "tp_distribution": {"tp1_hit": 15, "tp2_hit": 1, "tp3_hit": 0, "sl_hit": 14, "breakeven": 0},
+        "period_days": 7,
+    }
+    input_data = {"trade_history": [], "metrics": metrics}
+
+    result = agent._deterministic_fallback(input_data)
+
+    session_suggestions = [
+        s for s in result.raw_data["suggestions"]
+        if s["parameter"] == "session_filter"
+    ]
+    assert len(session_suggestions) == 1
+    assert session_suggestions[0]["suggested_value"] == "disabled"
+
+
+def test_session_filter_review_rejected_by_whitelist() -> None:
+    """LLM sugeruje session_filter='review' → odrzucone (nie w allowed list)."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.5,
+        "suggestions": [
+            {
+                "parameter": "session_filter",
+                "current_value": "London,New York",
+                "suggested_value": "review",
+                "reasoning": "New York underperforming",
+            }
+        ],
+        "summary": "Review New York session.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    assert len(result.raw_data["suggestions"]) == 1
+    note = result.raw_data["suggestions"][0]["note"]
+    assert "Rejected" in note
+    assert "not in allowed" in note
+
+
+def test_session_filter_disabled_accepted_by_whitelist() -> None:
+    """LLM sugeruje session_filter='disabled' → przechodzi whitelist."""
+    agent = Optimizer(api_client=MagicMock())
+    input_data = {"trade_history": [], "metrics": {}}
+
+    llm_json = json.dumps({
+        "overall_assessment": "needs_tuning",
+        "confidence": 0.6,
+        "suggestions": [
+            {
+                "parameter": "session_filter",
+                "current_value": "London,New York",
+                "suggested_value": "disabled",
+                "reasoning": "New York underperforming",
+            }
+        ],
+        "summary": "Disable New York session.",
+    })
+
+    result = agent._parse_llm_response(llm_json, input_data)
+
+    accepted = [s for s in result.raw_data["suggestions"] if "note" not in s]
+    assert len(accepted) == 1
+    assert accepted[0]["suggested_value"] == "disabled"
+
+
 # ── Krok 2: Early-return / min sample tests ────────────────────────────────────
 
 
