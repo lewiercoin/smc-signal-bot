@@ -330,7 +330,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 
 - **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
 - **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
-- **Tydzień 3:** ⬜ NIE ROZPOCZĘTY (Confluence Engine + News API)
+- **Tydzień 3:** 🔄 W TOKU (Confluence Engine + News API)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -346,7 +346,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/fvg_detector.py` | ✅ | 10 | — |
 | `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 126**
+**Łączna liczba testów: 136**
 
 ### Tydzień 2 — SMC Engine UKOŃCZONY
 
@@ -359,13 +359,20 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - utils.py              (13 testów) — shared ATR (scalar + series)
 ```
 
-### Następny krok: Tydzień 3 — Confluence Engine + News API
+### Tydzień 3 — W TOKU
 
-```
-Moduły:
-- engine/confluence_scorer.py  (scoring 110 pkt)
-- connectors/news_client.py    (prawdziwe API zamiast mock calendar)
-```
+| Moduł | Status | Testy | Uwagi |
+|-------|--------|-------|-------|
+| `connectors/news_client.py` | ✅ | 10 | FCS API + ForexFactory fallback, cache 5min |
+| `engine/confluence_scorer.py` | ⬜ | — | Następny krok |
+
+### Następny krok: engine/confluence_scorer.py
+
+Uwagi do integracji:
+- `NewsClient.is_news_blocked(pair)` zwraca `NewsCheckResult(is_blocked=...)`
+- `NewsCheckResult` w `news_client.py` używa `is_blocked` (nie `blocked` jak w `data_quality.py`)
+- Podmiana mock → real API w `data_quality.py` jako osobny krok po confluence_scorer
+- `beautifulsoup4` zainstalowany w .venv (fallback scraping)
 
 ---
 
