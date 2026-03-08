@@ -56,7 +56,7 @@ Pipeline: dane → DQ → features → setups → scoring → agenci → risk �
 
 ## 4. Trzy kluczowe mechanizmy dodane z audytu Groka
 
-### [GROK-1] Absorption Detection (`smc/absorption.py`)
+### [GROK-1] Absorption Detection (`engine/confluence_scorer.py` — `_score_absorption`) ✅ ZAIMPLEMENTOWANE
 Identyfikuje świece gdzie instytucja absorbuje podaż/popyt.
 Warunek: `body_ratio ≤ threshold AND volume_ratio ≥ threshold`
 `body_ratio = abs(close - open) / (high - low)`
@@ -330,7 +330,8 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 
 - **Tydzień 1:** ✅ UKOŃCZONY (`connectors`, `db`, `dq`)
 - **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
-- **Tydzień 3:** 🔄 W TOKU (Confluence Engine + News API)
+- **Tydzień 3:** ✅ UKOŃCZONY (Confluence Engine + News API)
+- **Tydzień 4:** ⬜ NIE ROZPOCZĘTY
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -346,7 +347,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 | `smc/fvg_detector.py` | ✅ | 10 | — |
 | `smc/liquidity_detector.py` | ✅ | 12 | bieżący |
 
-**Łączna liczba testów: 136**
+**Łączna liczba testów: 158**
 
 ### Tydzień 2 — SMC Engine UKOŃCZONY
 
@@ -357,22 +358,27 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - fvg_detector.py       (10 testów) — Fair Value Gaps + fill %
 - liquidity_detector.py (12 testów) — Liquidity Sweeps
 - utils.py              (13 testów) — shared ATR (scalar + series)
+
+Tydzień 3:
+- confluence_scorer.py  (22 testy) — pełny scoring 0-110 pkt + GROK-1 absorption
+- news_client.py        (10 testów) — FCS API + ForexFactory fallback
 ```
 
-### Tydzień 3 — W TOKU
+### Tydzień 3 — UKOŃCZONY ✅
 
 | Moduł | Status | Testy | Uwagi |
 |-------|--------|-------|-------|
 | `connectors/news_client.py` | ✅ | 10 | FCS API + ForexFactory fallback, cache 5min |
-| `engine/confluence_scorer.py` | ⬜ | — | Następny krok |
+| `engine/confluence_scorer.py` | ✅ | 22 | Pełny scoring 0-110 pkt, GROK-1 absorption |
+| `engine/__init__.py` | ✅ | — | Package init |
 
-### Następny krok: engine/confluence_scorer.py
-
-Uwagi do integracji:
+Uwagi do integracji (Tydzień 4):
 - `NewsClient.is_news_blocked(pair)` zwraca `NewsCheckResult(is_blocked=...)`
 - `NewsCheckResult` w `news_client.py` używa `is_blocked` (nie `blocked` jak w `data_quality.py`)
-- Podmiana mock → real API w `data_quality.py` jako osobny krok po confluence_scorer
+- Podmiana mock → real API w `data_quality.py` jako osobny krok w Tygodniu 4
 - `beautifulsoup4` zainstalowany w .venv (fallback scraping)
+
+### Następny krok: Tydzień 4 — Risk Engine + Signal Generator
 
 ---
 
