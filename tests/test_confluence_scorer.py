@@ -348,14 +348,14 @@ class TestStructureScoring:
 class TestAbsorptionScoring:
     def _make_absorption_candles(
         self,
-        body_ratio: float = 0.20,
+        body_ratio: float = 0.85,
         volume_spike: float = 2.0,
         n_base: int = 30,
     ) -> list[Candle]:
-        """Build candle list where last 3 candles have small body_ratio + volume spike.
+        """Build candle list where last 3 candles have large body_ratio + volume spike.
 
-        GROK-1: body_ratio = abs(close-open)/(high-low) ≤ 0.30 = absorption candle.
-        Small body + wide range = institution absorbing supply/demand.
+        GROK-1: body_ratio = abs(close-open)/(high-low) > 0.70 = absorption candle.
+        Large body + small wicks = strong directional pressure = institution absorbing.
         """
         avg_vol = 100
         spike_vol = int(avg_vol * volume_spike)
@@ -385,16 +385,16 @@ class TestAbsorptionScoring:
         return base_candles + absorption_candles
 
     def test_absorption_detected_10pts(self):
-        """3 candles with body_ratio ≤ 0.30 (small body) + vol_spike > 1.5 → 10 pts."""
+        """3 candles with body_ratio > 0.70 (large body) + vol_spike > 1.5 → 10 pts."""
         scorer = ConfluenceScorer()
-        candles = self._make_absorption_candles(body_ratio=0.20, volume_spike=2.0)
+        candles = self._make_absorption_candles(body_ratio=0.85, volume_spike=2.0)
         comp = scorer._score_absorption(candles)
         assert comp.score == 10
 
-    def test_absorption_large_body_0pts(self):
-        """Body ratio > 0.30 (large body = NOT absorption) → 0 pts."""
+    def test_absorption_small_body_0pts(self):
+        """Body ratio ≤ 0.70 (small body = doji, NOT absorption) → 0 pts."""
         scorer = ConfluenceScorer()
-        candles = self._make_absorption_candles(body_ratio=0.85, volume_spike=2.0)
+        candles = self._make_absorption_candles(body_ratio=0.30, volume_spike=2.0)
         comp = scorer._score_absorption(candles)
         assert comp.score == 0
 

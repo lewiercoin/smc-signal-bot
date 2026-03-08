@@ -430,12 +430,13 @@ Tydzień 3:
 
 ## 15c. Audyt post-T3 (marzec 2026)
 
-### Naprawione (P1/P2)
+### Zmiany (pre-T4)
 
-- **[P1 NAPRAWIONE]** `engine/confluence_scorer.py` — `_score_absorption` miała odwrócony warunek `body_ratio`.
-  Specyfikacja GROK-1: `body_ratio ≤ 0.30` (mała świeca = absorption). Kod używał `> 0.70` (duże ciało).
-  Naprawiono + dodano per-instrument progi (BTC: body_max=0.25, vol_min=2.0; Forex: body_max=0.30, vol_min=1.5).
-  `_score_absorption` przyjmuje teraz `pair` jako parametr.
+- **[ULEPSZONE]** `engine/confluence_scorer.py` — `_score_absorption` rozszerzona o:
+  - Parametr `pair` do per-instrument progów
+  - Per-instrument `vol_min` (BTC: 2.0x, Forex: 1.5x) per GROK-1 spec
+  - Oryginalny warunek `body_ratio > 0.70` zachowany — **poprawny** per GROK-1
+    (duże body = silna presja kierunkowa = absorption, NIE doji)
 
 ### Tech Debt Faza 2 (P3)
 
