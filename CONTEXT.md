@@ -333,6 +333,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 3:** ✅ UKOŃCZONY (Confluence Engine + News API)
 - **Tydzień 4:** ✅ UKOŃCZONY (Risk Engine ✅, Signal Generator ✅)
 - **Tydzień 5 (Część 1):** ✅ UKOŃCZONY (BaseAgent ✅, StructureAgent ✅, FundamentalAgent ✅)
+- **Tydzień 5 (Część 2):** ✅ UKOŃCZONY (RiskVerifier ✅, TelegramEditor ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -398,7 +399,14 @@ Tydzień 3:
 | 5 | `agents/structure_agent.py` | 12 | `441245e` |
 | 5 | `agents/fundamental_agent.py` | 25 | `441245e` |
 
-**Łączna liczba testów: 188 + 47 = 235**
+### Tydzień 5 — AI Agents (Część 2) ✅
+
+| Tydzień | Moduł | Testy | Commit |
+|---------|-------|-------|--------|
+| 5 | `agents/risk_verifier.py` | 26 | `1d26989` |
+| 5 | `agents/telegram_editor.py` | 14 | `1d26989` |
+
+**Łączna liczba testów: 235 + 40 = 275**
 
 ### AI Agents — architektura
 
@@ -411,15 +419,22 @@ FundamentalAgent: temp=0.3, analyzes news events → MarketBias + impact_level
   Deterministic fallback includes session rules (Friday late, Monday early, overlap boost, Asian EUR penalty)
   Helper: _get_session_info() maps UTC hour → session name
   Helper: _parse_instrument() maps "EUR_USD" → ("EUR", "USD")
-Deterministic fallbacks: StructureAgent = last break direction, FundamentalAgent = session rules + actual vs forecast
+Deterministyczne fallbacks: StructureAgent = last break direction, FundamentalAgent = session rules + actual vs forecast
+RiskVerifier: deterministyczny (BEZ LLM), NIE dziedziczy BaseAgent
+  Checks (w kolejności): daily_loss circuit breaker (≥5% block, ≥3% warning),
+  max_positions (≥3 block), portfolio correlation (threshold 0.60 — identyczny instrument+direction=1.0),
+  spread z-score (warning only, nie blokuje), sizing validation (2% risk rule — Scenariusz A)
+  verify() nigdy nie rzuca wyjątku — zwraca risk_approved=False przy internal error
+  PIP_VALUES: lokalnie zdefiniowane (unikamy circular import)
+TelegramEditor: temp=0.3, max_tokens=512, formatuje sygnał na Telegram message
+  System prompt contains "Do NOT include ATR values", "Do NOT mention AI, bot, algorithm"
+  Deterministic fallback: template z pips + R multiples + disclaimer (emoji 🟢/🔴)
+  PIP_VALUES: importowane z engine/risk_engine.PIP_VALUES
+  _parse_llm_response: truncate >500 znaków, auto-dopisuje disclaimer jeśli brak
+  Nie używa _now — sesja przychodzi w input_data["session"] z pipeline
 
-### Następny krok: Tydzień 5 Część 2 — risk_verifier + telegram_editor agents
+### Następny krok: Tydzień 5 Część 3 — agents/optimizer_agent.py (Agent 5, GROK-3)
 
----
-
-## 15b. Kluczowe decyzje techniczne (zapis audytów)
-
-### ATR — implementacja
 - `smc/utils.py` zawiera dwie funkcje ATR (bez pandas-ta, czysta implementacja):
   - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
   - `calculate_atr_series(candles, period)` → list[float | None] (Wilder's smoothing per-candle, używana przez OrderBlockDetector)
