@@ -33,9 +33,22 @@ _MAX_SCORE = 110
 _MIN_CANDLES = 14
 _IPDA_RANGE_BARS = 20
 _AVG_VOLUME_BARS = 20
-_ABSORPTION_BODY_RATIO_MIN = 0.70
-_ABSORPTION_VOLUME_SPIKE_MIN = 1.5
 _ABSORPTION_LOOKBACK = 3
+
+# GROK-1: absorption = small body (indecision/absorption candle) + high volume
+# body_ratio = abs(close - open) / (high - low) — SMALL ratio = absorption
+_ABSORPTION_BODY_RATIO_MAX: dict[str, float] = {
+    "EUR_USD": 0.30,
+    "XAU_USD": 0.30,
+    "BTC_USD": 0.25,  # stricter for BTC
+}
+_ABSORPTION_VOLUME_SPIKE_MIN: dict[str, float] = {
+    "EUR_USD": 1.5,
+    "XAU_USD": 1.5,
+    "BTC_USD": 2.0,  # stricter for BTC
+}
+_ABSORPTION_BODY_RATIO_MAX_DEFAULT = 0.30
+_ABSORPTION_VOLUME_SPIKE_MIN_DEFAULT = 1.5
 
 SESSIONS: dict[str, tuple[int, int]] = {
     "overlap": (12, 16),
@@ -199,7 +212,7 @@ class ConfluenceScorer:
             self._score_liquidity_sweep(sweeps, setup_direction),
             self._score_session(pair),
             self._score_structure(structure),
-            self._score_absorption(candles),
+            self._score_absorption(candles, pair),
             self._score_htf_bias(htf_structure, setup_direction),
         ]
 
@@ -501,14 +514,19 @@ class ConfluenceScorer:
             reason="No BOS or CHoCH detected",
         )
 
-    def _score_absorption(self, candles: list[Candle]) -> ScoreComponent:
+    def _score_absorption(
+        self, candles: list[Candle], pair: str = "EUR_USD"
+    ) -> ScoreComponent:
         """Score absorption detection [GROK-1] — max 10 pts.
 
         Checks last 3 candles:
-        - Each candle: body_ratio = abs(close - open) / (high - low) > 0.70
-        - Last candle: volume_spike = volume / avg_volume(20) > 1.5
+        - Each candle: body_ratio = abs(close - open) / (high - low) ≤ 0.30
+          (small body = institution absorbing supply/demand)
+        - Last candle: volume_spike = volume / avg_volume(20) > 1.5 (Forex)
+          or > 2.0 (BTC)
 
         All conditions met → 10 pts; otherwise → 0 pts.
+        Per-instrument thresholds per GROK-1 spec.
         """
         name = "Absorption [GROK-1]"
 
@@ -519,6 +537,9 @@ class ConfluenceScorer:
                 max_score=10,
                 reason="Insufficient candles for absorption check",
             )
+
+        body_max = _ABSORPTION_BODY_RATIO_MAX.get(pair, _ABSORPTION_BODY_RATIO_MAX_DEFAULT)
+        vol_min = _ABSORPTION_VOLUME_SPIKE_MIN.get(pair, _ABSORPTION_VOLUME_SPIKE_MIN_DEFAULT)
 
         last_three = candles[-_ABSORPTION_LOOKBACK:]
 
@@ -532,12 +553,12 @@ class ConfluenceScorer:
                     reason="Zero-range candle — absorption not detected",
                 )
             body_ratio = abs(candle.close - candle.open) / hl_range
-            if body_ratio <= _ABSORPTION_BODY_RATIO_MIN:
+            if body_ratio > body_max:
                 return ScoreComponent(
                     name=name,
                     score=0,
                     max_score=10,
-                    reason=f"Body ratio {body_ratio:.2f} ≤ {_ABSORPTION_BODY_RATIO_MIN} threshold",
+                    reason=f"Body ratio {body_ratio:.2f} > {body_max} threshold (not absorption)",
                 )
 
         avg_volume_candles = candles[-(
@@ -561,7 +582,7 @@ class ConfluenceScorer:
 
         volume_spike = last_candle.volume / avg_volume
 
-        if volume_spike > _ABSORPTION_VOLUME_SPIKE_MIN:
+        if volume_spike > vol_min:
             return ScoreComponent(
                 name=name,
                 score=10,
@@ -574,7 +595,7 @@ class ConfluenceScorer:
             name=name,
             score=0,
             max_score=10,
-            reason=f"Volume spike {volume_spike:.2f}x < {_ABSORPTION_VOLUME_SPIKE_MIN}x threshold",
+            reason=f"Volume spike {volume_spike:.2f}x < {vol_min}x threshold",
         )
 
     def _score_htf_bias(

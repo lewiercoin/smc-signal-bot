@@ -6,6 +6,7 @@ Tests DQResult, NewsCheckResult dataclasses and DataQualityChecker class.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -286,8 +287,13 @@ class TestCheckSpread:
 class TestCheckNewsWindow:
     """Test check_news_window method."""
 
-    def test_no_news_clear(self, checker: DataQualityChecker) -> None:
-        """Test clear when no news events."""
+    def test_no_news_clear(self) -> None:
+        """Test clear when NewsClient reports no blocking events."""
+        from connectors.news_client import NewsCheckResult as NCResult
+
+        mock_client = MagicMock()
+        mock_client.is_news_blocked.return_value = NCResult(is_blocked=False)
+        checker = DataQualityChecker(news_client=mock_client)
         current_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
 
         result = checker.check_news_window("EUR_USD", current_time)
@@ -389,3 +395,71 @@ class TestCheckNewsWindow:
         result = checker.check_news_window("XAU_USD", current_time)
 
         assert result.blocked is False
+
+
+class TestNewsWindowUsesRealClient:
+    """Test check_news_window delegates to NewsClient when no mock calendar set."""
+
+    def test_news_window_uses_real_client_blocked(self) -> None:
+        """NewsClient.is_news_blocked returns blocked → DQ result is blocked=True."""
+        from connectors.news_client import NewsCheckResult as NCResult
+
+        mock_client = MagicMock()
+        mock_client.is_news_blocked.return_value = NCResult(
+            is_blocked=True,
+            reason="HIGH impact event 'NFP' in 30 min",
+        )
+
+        checker = DataQualityChecker(news_client=mock_client)
+        current_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        result = checker.check_news_window("EUR_USD", current_time)
+
+        assert result.blocked is True
+        assert result.reason is not None
+        mock_client.is_news_blocked.assert_called_once_with(
+            pair="EUR_USD",
+            window_minutes=120,
+        )
+
+    def test_news_window_uses_real_client_clear(self) -> None:
+        """NewsClient.is_news_blocked returns not blocked → DQ result is blocked=False."""
+        from connectors.news_client import NewsCheckResult as NCResult
+
+        mock_client = MagicMock()
+        mock_client.is_news_blocked.return_value = NCResult(is_blocked=False)
+
+        checker = DataQualityChecker(news_client=mock_client)
+        current_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        result = checker.check_news_window("EUR_USD", current_time)
+
+        assert result.blocked is False
+        mock_client.is_news_blocked.assert_called_once()
+
+    def test_news_window_fail_safe_on_client_error(self) -> None:
+        """NewsClient raises exception → fail-safe: blocked=True."""
+        mock_client = MagicMock()
+        mock_client.is_news_blocked.side_effect = RuntimeError("network down")
+
+        checker = DataQualityChecker(news_client=mock_client)
+        current_time = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        result = checker.check_news_window("EUR_USD", current_time)
+
+        assert result.blocked is True
+        assert result.reason is not None
+        assert "fail-safe" in result.reason.lower()
+
+    def test_news_window_mock_calendar_takes_priority(self) -> None:
+        """If mock calendar is set, NewsClient is NOT called (legacy tests unaffected)."""
+        mock_client = MagicMock()
+
+        checker = DataQualityChecker(news_client=mock_client)
+        news_time = datetime(2024, 1, 1, 14, 0, tzinfo=timezone.utc)
+        checker.set_mock_news_calendar([
+            {"time": news_time, "currency": "USD", "impact": "HIGH", "name": "NFP"}
+        ])
+
+        current_time = datetime(2024, 1, 1, 14, 30, tzinfo=timezone.utc)
+        result = checker.check_news_window("EUR_USD", current_time)
+
+        assert result.blocked is True
+        mock_client.is_news_blocked.assert_not_called()
