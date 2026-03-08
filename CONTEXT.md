@@ -332,6 +332,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 2:** ✅ UKOŃCZONY (SMC Engine — swing ✅, structure ✅, ob ✅, fvg ✅, utils ✅, liquidity ✅)
 - **Tydzień 3:** ✅ UKOŃCZONY (Confluence Engine + News API)
 - **Tydzień 4:** ✅ UKOŃCZONY (Risk Engine ✅, Signal Generator ✅)
+- **Tydzień 5 (Część 1):** ✅ UKOŃCZONY (BaseAgent ✅, StructureAgent ✅, FundamentalAgent ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -389,7 +390,30 @@ Tydzień 3:
 | `engine/risk_engine.py` | ✅ | 14 | SL swing+ATR, TP 3-poziomy, sizing 2%, spread filter |
 | `engine/signal_generator.py` | ✅ | 12 | Pełny pipeline: Fetch→DQ→Confluence→Risk→Signal→DB |
 
-### Następny krok: Tydzień 5 — AI Agents (Agenci 1–4 + Optimizer + 3-tier fallback)
+### Tydzień 5 — AI Agents (Część 1) ✅
+
+| Tydzień | Moduł | Testy | Commit |
+|---------|-------|-------|--------|
+| 5 | `agents/base_agent.py` | 10 | `441245e` |
+| 5 | `agents/structure_agent.py` | 12 | `441245e` |
+| 5 | `agents/fundamental_agent.py` | 25 | `441245e` |
+
+**Łączna liczba testów: 188 + 47 = 235**
+
+### AI Agents — architektura
+
+3-tier fallback: Cache-first → LLM → Deterministic
+Cache: in-memory dict, TTL 24h, max 1000 entries, eviction oldest-first
+StructureAgent: temp=0.2, analyzes BOS/CHoCH + swing points → MarketBias
+  System prompt contains "Do NOT analyze fibonacci, RSI, MACD, volume divergence"
+FundamentalAgent: temp=0.3, analyzes news events → MarketBias + impact_level
+  System prompt contains "Do NOT analyze chart patterns, technical indicators"
+  Deterministic fallback includes session rules (Friday late, Monday early, overlap boost, Asian EUR penalty)
+  Helper: _get_session_info() maps UTC hour → session name
+  Helper: _parse_instrument() maps "EUR_USD" → ("EUR", "USD")
+Deterministic fallbacks: StructureAgent = last break direction, FundamentalAgent = session rules + actual vs forecast
+
+### Następny krok: Tydzień 5 Część 2 — risk_verifier + telegram_editor agents
 
 ---
 
