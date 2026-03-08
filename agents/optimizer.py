@@ -10,6 +10,7 @@ Scheduling NIE jest w tym module — będzie w Tygodniu 6 (APScheduler).
 
 from __future__ import annotations
 
+import itertools
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -20,18 +21,46 @@ from agents.base_agent import AgentConfig, AgentResult, AgentTier, BaseAgent, Ma
 
 logger = structlog.get_logger(__name__)
 
+# ── Parameter safety constants ────────────────────────────────────────────────
+
+PARAMETER_DENYLIST: frozenset[str] = frozenset({
+    "max_risk_per_trade",
+    "circuit_breaker_daily_loss",
+    "circuit_breaker_weekly_loss",
+    "max_positions",
+    "max_risk",
+})
+
+PARAMETER_WHITELIST: dict[str, dict] = {
+    "confluence_threshold": {"min": 55, "max": 80, "type": int},
+    "tp1_ratio":            {"min": 1.0, "max": 2.5, "type": float},
+    "tp2_ratio":            {"min": 2.0, "max": 4.0, "type": float},
+    "tp3_ratio":            {"min": 3.0, "max": 6.0, "type": float},
+    "session_filter":       {"type": str, "allowed": ["London", "New York", "review"]},
+}
+
+CURRENT_VALUES: dict[str, float | int | str] = {
+    "confluence_threshold": 65,
+    "tp1_ratio": 1.5,
+    "tp2_ratio": 2.5,
+    "tp3_ratio": 3.5,
+    "session_filter": "London,New York",
+}
+
+MAX_DELTA_RATIO: float = 0.20
+
 
 class Optimizer(BaseAgent):
     """Weekly optimization agent — Agent 5 (GROK-3).
 
     Analizuje historię tradów i sugeruje tuning parametrów strategii.
     NIE wdraża zmian automatycznie (Faza 1 = READ-ONLY).
-    3-tier fallback: Cache → LLM (Claude Haiku, temp=0.4) → Deterministic.
+    3-tier fallback: Cache → LLM (Claude Haiku, temp=0.1) → Deterministic.
     """
 
     def __init__(self, api_client: object = None) -> None:
         config = AgentConfig(
-            temperature=0.4,
+            temperature=0.1,
             max_tokens=2048,
             cache_ttl_seconds=604800,  # 7 dni — optymalizacja raz na tydzień
         )
@@ -50,6 +79,8 @@ class Optimizer(BaseAgent):
             "trade_history": trade_history,
             "metrics": metrics,
         }
+        if metrics["total_trades"] < 30:
+            return self._deterministic_fallback(input_data)
         return self.analyze(input_data)
 
     # ── Metrics ───────────────────────────────────────────────────────────────
@@ -67,6 +98,9 @@ class Optimizer(BaseAgent):
                 "best_r": 0.0,
                 "worst_r": 0.0,
                 "profit_factor": 0.0,
+                "max_drawdown": 0.0,
+                "expectancy": 0.0,
+                "max_consecutive_losses": 0,
                 "by_instrument": {},
                 "by_session": {},
                 "by_setup": {},
@@ -90,6 +124,9 @@ class Optimizer(BaseAgent):
                 "best_r": 0.0,
                 "worst_r": 0.0,
                 "profit_factor": 0.0,
+                "max_drawdown": 0.0,
+                "expectancy": 0.0,
+                "max_consecutive_losses": 0,
                 "by_instrument": {},
                 "by_session": {},
                 "by_setup": {},
@@ -210,6 +247,34 @@ class Optimizer(BaseAgent):
         if len(dates) >= 2:
             period_days = (max(dates) - min(dates)).days
 
+        # Max drawdown (peak-to-trough na equity curve z R-multiples)
+        if r_values:
+            equity = list(itertools.accumulate(r_values))
+            peak = equity[0]
+            max_drawdown = 0.0
+            for val in equity:
+                peak = max(peak, val)
+                max_drawdown = min(max_drawdown, val - peak)
+            max_drawdown = round(max_drawdown, 3)
+        else:
+            max_drawdown = 0.0
+
+        # Expectancy = WR * avg_win_r - LR * avg_loss_r
+        avg_win_r = round(sum(wins) / len(wins), 3) if wins else 0.0
+        avg_loss_r = round(abs(sum(losses) / len(losses)), 3) if losses else 0.0
+        loss_rate = len(losses) / total_trades
+        expectancy = round((len(wins) / total_trades) * avg_win_r - loss_rate * avg_loss_r, 3)
+
+        # Max consecutive losses
+        max_consecutive_losses = 0
+        streak = 0
+        for r in r_values:
+            if r < 0.0:
+                streak += 1
+                max_consecutive_losses = max(max_consecutive_losses, streak)
+            else:
+                streak = 0
+
         return {
             "total_trades": total_trades,
             "win_rate": win_rate,
@@ -217,6 +282,9 @@ class Optimizer(BaseAgent):
             "best_r": best_r,
             "worst_r": worst_r,
             "profit_factor": profit_factor,
+            "max_drawdown": max_drawdown,
+            "expectancy": expectancy,
+            "max_consecutive_losses": max_consecutive_losses,
             "by_instrument": by_instrument,
             "by_session": by_session,
             "by_setup": by_setup,
@@ -236,14 +304,18 @@ class Optimizer(BaseAgent):
             "TUNABLE PARAMETERS (current values):\n"
             "- confluence_threshold: 65 (min score to publish signal, max possible 110)\n"
             "- tp1_ratio: 1.5R, tp2_ratio: 2.5R, tp3_ratio: 3.5R (BTC: tp3=5.5R)\n"
-            "- max_risk_per_trade: 2%\n"
-            "- swing_length options: 7, 10, 14 (GROK-2 adaptive)\n"
             "- session_filter: London, New York (currently both enabled)\n"
+            "\n"
+            "FORBIDDEN parameters (never suggest changes to these):\n"
+            "- max_risk_per_trade, circuit_breaker_daily_loss, circuit_breaker_weekly_loss,\n"
+            "  max_positions, max_risk (these are hard risk limits, not tunable)\n"
             "\n"
             "RULES:\n"
             "- Suggest SMALL incremental changes only (e.g., threshold 65→67, not 65→80)\n"
-            "- Never suggest removing safety limits (risk >2%, threshold <50)\n"
+            "- Maximum change per parameter: ±20% of current value\n"
+            "- Never suggest threshold <55 or >80\n"
             "- If win_rate > 60% and profit_factor > 1.5: suggest NO changes (\"Strategy performing well\")\n"
+            "- If total_trades < 30: output performing_well with empty suggestions (insufficient data)\n"
             "- If win_rate < 40%: focus on confluence_threshold increase (more selective)\n"
             "- If avg_r < 1.0: focus on TP ratio adjustments\n"
             "- If one session significantly underperforms: suggest disabling it\n"
@@ -282,6 +354,9 @@ class Optimizer(BaseAgent):
         profit_factor = metrics.get("profit_factor", 0.0)
         best_r = metrics.get("best_r", 0.0)
         worst_r = metrics.get("worst_r", 0.0)
+        max_drawdown = metrics.get("max_drawdown", 0.0)
+        expectancy = metrics.get("expectancy", 0.0)
+        max_consecutive_losses = metrics.get("max_consecutive_losses", 0)
         period_days = metrics.get("period_days", 0)
 
         tp1_hit = tp_dist.get("tp1_hit", 0)
@@ -317,6 +392,7 @@ class Optimizer(BaseAgent):
             f"Period: {period_days} days | Total trades: {total_trades}\n"
             f"Win rate: {win_rate}% | Average R: {avg_r} | Profit factor: {profit_factor}\n"
             f"Best trade: {best_r}R | Worst trade: {worst_r}R\n"
+            f"Max drawdown: {max_drawdown}R | Expectancy: {expectancy}R | Max consecutive losses: {max_consecutive_losses}\n"
             f"\n"
             f"TP Distribution:\n"
             f"- TP1 hit: {tp1_hit} | TP2 hit: {tp2_hit} | TP3 hit: {tp3_hit}\n"
@@ -372,43 +448,119 @@ class Optimizer(BaseAgent):
             if not parameter:
                 continue
 
-            # Safety guard: max_risk_per_trade > 3%
-            if parameter == "max_risk_per_trade":
-                try:
-                    if float(suggested_value) > 0.03:
-                        logger.warning(
-                            "safety_guard_risk_rejected",
-                            suggested_value=suggested_value,
-                        )
-                        validated_suggestions.append({
-                            "parameter": parameter,
-                            "current_value": current_value,
-                            "suggested_value": suggested_value,
-                            "reasoning": reasoning,
-                            "note": "Rejected: risk increase beyond 3% safety limit",
-                        })
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            # Layer 1: Denylist — hard risk parameters, always rejected
+            if parameter in PARAMETER_DENYLIST:
+                logger.warning(
+                    "denylist_rejected",
+                    parameter=parameter,
+                    suggested_value=suggested_value,
+                )
+                validated_suggestions.append({
+                    "parameter": parameter,
+                    "current_value": current_value,
+                    "suggested_value": suggested_value,
+                    "reasoning": reasoning,
+                    "note": "Rejected: forbidden risk parameter",
+                })
+                continue
 
-            # Safety guard: confluence_threshold < 50
-            if parameter == "confluence_threshold":
+            # Layer 2: Whitelist — only known tunable parameters allowed
+            if parameter not in PARAMETER_WHITELIST:
+                logger.warning(
+                    "whitelist_rejected",
+                    parameter=parameter,
+                    suggested_value=suggested_value,
+                )
+                validated_suggestions.append({
+                    "parameter": parameter,
+                    "current_value": current_value,
+                    "suggested_value": suggested_value,
+                    "reasoning": reasoning,
+                    "note": "Rejected: unknown parameter not in whitelist",
+                })
+                continue
+
+            spec = PARAMETER_WHITELIST[parameter]
+            param_type = spec["type"]
+
+            # Layer 3: Type parsing
+            if param_type in (int, float):
                 try:
-                    if int(float(suggested_value)) < 50:
+                    parsed: int | float | str = int(float(suggested_value)) if param_type is int else float(suggested_value)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "type_parse_rejected",
+                        parameter=parameter,
+                        suggested_value=suggested_value,
+                    )
+                    validated_suggestions.append({
+                        "parameter": parameter,
+                        "current_value": current_value,
+                        "suggested_value": suggested_value,
+                        "reasoning": reasoning,
+                        "note": "Rejected: invalid numeric value",
+                    })
+                    continue
+
+                # Layer 4: Range check
+                param_min = spec.get("min")
+                param_max = spec.get("max")
+                if (param_min is not None and parsed < param_min) or (param_max is not None and parsed > param_max):
+                    logger.warning(
+                        "range_rejected",
+                        parameter=parameter,
+                        parsed=parsed,
+                        min=param_min,
+                        max=param_max,
+                    )
+                    validated_suggestions.append({
+                        "parameter": parameter,
+                        "current_value": current_value,
+                        "suggested_value": suggested_value,
+                        "reasoning": reasoning,
+                        "note": f"Rejected: value {parsed} outside allowed range [{param_min}, {param_max}]",
+                    })
+                    continue
+
+                # Layer 5: Delta check vs source-of-truth (not LLM's current_value)
+                source_value = CURRENT_VALUES.get(parameter)
+                if source_value is not None and isinstance(source_value, (int, float)) and source_value != 0:
+                    delta_ratio = abs(float(parsed) - float(source_value)) / abs(float(source_value))
+                    if delta_ratio > MAX_DELTA_RATIO:
                         logger.warning(
-                            "safety_guard_threshold_rejected",
-                            suggested_value=suggested_value,
+                            "delta_rejected",
+                            parameter=parameter,
+                            parsed=parsed,
+                            source_value=source_value,
+                            delta_pct=round(delta_ratio * 100, 1),
                         )
                         validated_suggestions.append({
                             "parameter": parameter,
                             "current_value": current_value,
                             "suggested_value": suggested_value,
                             "reasoning": reasoning,
-                            "note": "Rejected: threshold below 50 safety minimum",
+                            "note": f"Rejected: change {round(delta_ratio * 100, 1)}% exceeds ±{int(MAX_DELTA_RATIO * 100)}% limit",
                         })
                         continue
-                except (ValueError, TypeError):
-                    pass
+
+            elif param_type is str:
+                # Layer 4 (str): allowed values check
+                allowed = spec.get("allowed", [])
+                if allowed and suggested_value not in allowed:
+                    logger.warning(
+                        "allowed_values_rejected",
+                        parameter=parameter,
+                        suggested_value=suggested_value,
+                        allowed=allowed,
+                    )
+                    validated_suggestions.append({
+                        "parameter": parameter,
+                        "current_value": current_value,
+                        "suggested_value": suggested_value,
+                        "reasoning": reasoning,
+                        "note": f"Rejected: value '{suggested_value}' not in allowed {allowed}",
+                    })
+                    continue
 
             validated_suggestions.append({
                 "parameter": parameter,
@@ -468,13 +620,13 @@ class Optimizer(BaseAgent):
         confidence: float
 
         # Reguła 1: za mało danych
-        if total_trades < 5:
+        if total_trades < 30:
             suggestions = []
             summary = (
                 f"Insufficient data: only {total_trades} trades in period. "
-                f"Minimum 5 needed for optimization."
+                f"Minimum 30 needed for optimization."
             )
-            confidence = 0.2
+            confidence = 0.1
 
         # Reguła 2: strategia działa dobrze
         elif win_rate > 60.0 and profit_factor > 1.5:
