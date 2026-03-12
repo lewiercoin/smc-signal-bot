@@ -46,7 +46,7 @@ Jeśli chcesz zmienić algorytm detekcji OB, FVG, lub BoS/CHoCH
 → najpierw omów impakt na istniejące sygnały
 
 ### Dodanie nowej zależności
-Jeśli nowa biblioteka nie jest w pyproject.toml
+Jeśli nowa biblioteka nie jest w requirements.txt
 → zapytaj czy jest potrzebna i czy nie duplikuje istniejącej funkcji
 
 ### Zmiana struktury katalogów
