@@ -468,6 +468,27 @@ Optimizer: weekly, offline, READ-ONLY
 **Łączna liczba testów: 302 + 28 = 349** (po dodaniu Tydzień 6: +28 testów)
 **Łączna liczba testów: 349 + 22 = 371** (po dodaniu Tydzień 7: +22 integration tests)
 **Łączna liczba testów: 371 + 1 = 372** (po post-T7 audit: +1 test no-internal-mocks)
+**Łączna liczba testów: 372 + 9 = 381** (po Tydzień 8: +8 test_analyzer + 1 main.py analyze)
+
+### Tydzień 8 — Deploy + Paper Trading (W TOKU 🔄)
+
+| Zadanie | Status | Pliki |
+|---------|--------|-------|
+| Windsurf rules sync (wszystkie 5 plików) | ✅ | `.windsurf/rules/` |
+| `deploy/README.md` | ✅ | Hetzner CX22, systemd, SSL, paper→live flow |
+| `deploy/smc-signal-bot.service` | ✅ | systemd `Restart=always` |
+| `deploy/.env.example` | ✅ | wszystkie wymagane env vars |
+| `requirements.txt` | ✅ | pinned z aktualnego venv |
+| `paper_trading/analyzer.py` | ✅ | `PaperAnalyzer`, `AnalysisReport`, `PairStats` |
+| `python main.py analyze` | ✅ | CLI subcommand, wired do `main.py` |
+| `tests/test_analyzer.py` | ✅ | 9 testów (load, stats, per-pair, readiness, print) |
+| Paper trading run (20+ trades) | ⬜ | Wymaga live OANDA credentials |
+
+**Kryteria go-live (hardcoded w `_evaluate_readiness`):**
+- `total_closed ≥ 20`
+- `win_rate ≥ 40%`
+- `max_drawdown ≤ 15%`
+- `sl_hit_rate ≤ 60%`
 
 ### Post-Tydzień 7 — Audit fixes ✅
 
