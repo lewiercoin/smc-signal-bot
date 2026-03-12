@@ -270,22 +270,25 @@ class TestSpreadFilter:
     def test_spread_passed(self) -> None:
         """Spread below max → passed=True."""
         engine = RiskEngine()
-        result = engine._check_spread("EUR_USD", current_spread=1.5)
+        # 1.5 pips EUR/USD = 1.5 × 0.0001 = 0.00015 price units
+        result = engine._check_spread("EUR_USD", current_spread=0.00015)
 
         assert result.passed is True
-        assert result.current_spread == 1.5
+        assert result.current_spread == 0.00015
         assert result.max_allowed == MAX_SPREADS["EUR_USD"]
         assert result.reason == ""
 
     def test_spread_rejected(self) -> None:
         """Spread above max → passed=False with reason."""
         engine = RiskEngine()
-        result = engine._check_spread("EUR_USD", current_spread=3.0)
+        # 3.0 pips EUR/USD = 3.0 × 0.0001 = 0.00030 price units (above 2-pip limit)
+        result = engine._check_spread("EUR_USD", current_spread=0.00030)
 
         assert result.passed is False
-        assert result.current_spread == 3.0
-        assert "3.00" in result.reason
-        assert "2.00" in result.reason
+        assert result.current_spread == 0.00030
+        # Reason shows pips: "3.0 pips ... exceeds max 2.0"
+        assert "3.0" in result.reason
+        assert "2.0" in result.reason
 
 
 # ── Validation / Integration tests ───────────────────────────────────────────
@@ -333,7 +336,7 @@ class TestValidationAndIntegration:
             pair="EUR_USD",
             account_balance=10000.0,
             swings=swings,
-            current_spread=1.0,
+            current_spread=0.00010,  # 1.0 pip × 0.0001 price units
         )
 
         assert result is not None
