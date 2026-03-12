@@ -478,6 +478,8 @@ Optimizer: weekly, offline, READ-ONLY
 | FIX 1c | `tests/integration/test_signal_flow.py` | `test_signal_status_updated_after_send` wywoływał DB bezpośrednio — nie testował prawdziwego flow | Przepisano: wywołuje `TelegramBot.send_signal()` z mock Telegram → sprawdza DB przez `get_signal_by_uuid()` |
 | FIX 2 | `tests/integration/test_pipeline.py` | `_make_sg()` domyślny spread `1.2` = 12000 pips EUR (absurdalny). XAU `2.0` = 200 pips. BTC `50.0` = 50 pips. Testy przechodziły bo asercje dopuszczały `None` — maskowały problem spreadu | `REALISTIC_SPREADS = {EUR_USD: 0.00012, XAU_USD: 0.30, BTC_USD: 20.0}` w price units; `_make_sg()` używa spreadu per-pair domyślnie |
 | FIX 3 | `tests/integration/test_signal_flow.py` | Brak testu bez żadnych internal mocków | Dodano `TestNoInternalMocks::test_full_pipeline_no_internal_mocks` — pipeline end-to-end bez `patch.object` na scorer/risk/detectors |
+| FIX 4 (BLOCKER) | `engine/risk_engine.py` | `_check_spread()` porównywał `current_spread` (price units, np. 0.00012) bezpośrednio z `MAX_SPREADS` (pip units, np. 2.0) → spread gate **nigdy nie blokował** (0.00012 < 2.0 zawsze true) | Dodano konwersję: `spread_in_pips = current_spread / pip_size` przed porównaniem; zaktualizowano docstring i reason message; testy w `test_risk_engine.py` zaktualizowane do price units |
+| FIX 4b | `dq/data_quality.py` | Ten sam problem? | NIE — `check_spread()` już poprawnie konwertuje: `limit_price = limit_pips * pip_size` i porównuje `spread <= limit_price` — brak buga |
 
 ### Telegram Bot — konfiguracja (Tydzień 6)
 
