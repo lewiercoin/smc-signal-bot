@@ -469,8 +469,28 @@ Optimizer: weekly, offline, READ-ONLY
 **Łączna liczba testów: 349 + 22 = 371** (po dodaniu Tydzień 7: +22 integration tests)
 **Łączna liczba testów: 371 + 1 = 372** (po post-T7 audit: +1 test no-internal-mocks)
 **Łączna liczba testów: 372 + 9 = 381** (po Tydzień 8: +8 test_analyzer + 1 main.py analyze)
+**Łączna liczba testów: 381 + 6 = 387** (po Tydzień 9: +6 optimizer job tests)
 
-### Tydzień 8 — Deploy + Paper Trading (W TOKU 🔄)
+### Tydzień 9 — Optimizer + Soft Launch ✅ UKOŃCZONY
+
+| Zadanie | Status | Pliki |
+|---------|--------|-------|
+| `db.get_closed_signals(days, limit)` | ✅ | `db/database.py` |
+| `SignalScheduler._optimizer_job()` | ✅ | `bot/scheduler.py` — co niedziela 20:00 UTC |
+| `SignalScheduler._format_optimizer_report()` | ✅ | `bot/scheduler.py` — ASCII, raport na admin TG |
+| Optimizer wired przez `CronTrigger` | ✅ | `bot/scheduler.py:start()` |
+| `/start` command z disclaimerem | ✅ | `bot/telegram_bot.py` — Soft Launch public |
+| `tests/test_scheduler.py` +6 testów T9 | ✅ | optimizer job: skipped/insufficient/runs/exception/format×2 |
+
+**Optimizer flow (GROK-3):**
+- Trigger: co niedzielę 20:00 UTC (`CronTrigger`)
+- Gate: `< 10` zamkniętych sygnałów → `notify_admin` + skip
+- Dane: `db.get_closed_signals(days=28, limit=200)`
+- Wynik: `Optimizer.optimize(trade_history)` → `AgentResult`
+- Raport: `notify_admin(formatted_report)` — ASCII, bez Unicode
+- Safety: NIE wdraża zmian automatycznie (READ-ONLY)
+
+### Tydzień 8 — Deploy + Paper Trading ✅ UKOŃCZONY
 
 | Zadanie | Status | Pliki |
 |---------|--------|-------|
