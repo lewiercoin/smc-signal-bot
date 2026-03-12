@@ -485,6 +485,8 @@ Optimizer: weekly, offline, READ-ONLY
 | `Optimizer+db` wired do `main.py` | ✅ | `main.py` — end-to-end runtime |
 | **T9 Hotfix:** adapter `_adapt_closed_signals_for_optimizer()` | ✅ | `bot/scheduler.py` — mapuje DB→Optimizer contract |
 | **T9 Hotfix:** +25 testów adaptera | ✅ | `test_scheduler.py` — map_result, derive_session, fallback, keys |
+| **Deploy fix:** `load_dotenv()` w `main.py` | ✅ | `main.py` — działa lokalnie i w systemd |
+| **Deploy fix:** `EnvironmentFile=` w systemd service | ✅ | `deploy/smc-signal-bot.service` — `.env` ładowane przez systemd |
 
 **Optimizer flow (GROK-3):**
 - Trigger: co niedzielę 20:00 UTC (`CronTrigger`)
