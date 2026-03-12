@@ -59,7 +59,7 @@ smc-signal-bot/
 ```
 **UWAGA**: Katalog `config/` istnieje ale jest pusty (`config/profiles/` — zarezerwowany na przyszłość). Parametry są hardcoded w modułach (`MAX_SPREADS`, `PIP_VALUES`, `REWARD_RATIOS` w `risk_engine.py`). Nie twórz YAML config bez decyzji.
 
-## Harmonogram — STAN na Tydzień 7 (UKOŃCZONE)
+## Harmonogram — STAN na Tydzień 8 (UKOŃCZONE)
 - ✅ Tydz 1–2: Fundament (OANDA, DQ, SQLite v2.2)
 - ✅ Tydz 3: SMC Engine (OB, FVG, BoS, liquidity sweep, absorption w confluence_scorer)
 - ✅ Tydz 4: IPDA + Confluence Scorer (110 pkt max, próg 65)
