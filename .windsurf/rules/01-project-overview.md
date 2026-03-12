@@ -52,9 +52,9 @@ smc-signal-bot/
 │   └── runner.py              ← PaperTradingRunner (Tydzień 8)
 ├── tests/
 │   ├── integration/           ← conftest.py + test_pipeline.py + test_signal_flow.py
-│   └── test_*.py              ← unit testy (372 łącznie)
+│   └── test_*.py              ← unit testy (381 łącznie)
 ├── main.py                    ← entry: `python main.py` lub `python main.py paper`
-└── pyproject.toml
+└── requirements.txt
 ```
 **UWAGA**: Brak pliku `config/` — parametry są hardcoded w modułach (np. `MAX_SPREADS`, `PIP_VALUES`, `REWARD_RATIOS` w `risk_engine.py`). Nie twórz YAML config bez decyzji.
 
@@ -64,8 +64,8 @@ smc-signal-bot/
 - ✅ Tydz 4: IPDA + Confluence Scorer (110 pkt max, próg 65)
 - ✅ Tydz 5: H1Monitor + Filtry (news blackout, sesje, spread)
 - ✅ Tydz 6: AI Agenci 1–4 + 3-tier fallback (Cache→Haiku→Deterministic)
-- ✅ Tydz 7: Telegram Bot (webhook+polling) + integration tests (372 testów)
-- 🔄 Tydz 8: Paper Trading (min. 20 zamkniętych sygnałów — PaperTradingRunner istnieje)
+- ✅ Tydz 7: Telegram Bot (webhook+polling) + integration tests
+- ✅ Tydz 8: Deploy infra + PaperTradingRunner + PaperAnalyzer + rules sync (381 testów)
 - ⬜ Tydz 9: Optimizer Agent + Soft Launch publiczny
 
 ## Budżet
