@@ -2,17 +2,16 @@
 *Windsurf Rule: Always On*
 
 ## Instrumenty i profile
-Trzy instrumenty, każdy ma osobny plik YAML w `config/profiles/`.
-Nigdy nie używaj twardych wartości w kodzie — zawsze czytaj z configu.
+Parametry hardcoded w modułach — brak pliku YAML config. Źródło prawdy: `engine/risk_engine.py`.
 
 | Parametr | EUR/USD | XAU/USD | BTC/USD |
 |----------|---------|---------|---------|
-| swing_length (base) | 28 | 24 | 18 |
-| displacement_atr_min | 1.2 | 1.5 | 1.8 |
-| bar_ratio_min (BAR) | 1.2 | 1.5 | 1.8 |
-| rvr_ratio_min | 1.5 | 1.5 | 2.0 |
-| absorption body_max | 0.30 | 0.30 | 0.25 |
-| absorption vol_min | 1.5 | 1.5 | 2.0 |
+| pip_size | 0.0001 | 0.01 | 1.0 |
+| max_spread (pips) | 2.0 | 30.0 | 50.0 |
+| TP1 / TP2 / TP3 (R) | 1.5 / 2.5 / 3.5 | 1.5 / 2.5 / 3.5 | 1.5 / 2.5 / 5.5 |
+| max_risk_pct | 2% | 2% | 2% |
+| absorption body_ratio | > 0.70 | > 0.70 | > 0.65 |
+| absorption vol_ratio | ≥ 1.5 | ≥ 1.5 | ≥ 2.0 |
 
 ## IPDA — strefy i reguły
 ```
@@ -39,30 +38,34 @@ Absorption SPRZECZNA            -8 pkt (override ostrzegawczy)
 Multiple Taps ≥3 bez reakcji    -10 do -25 pkt
 ```
 
-## Progi decyzyjne (nie zmieniaj bez wyraźnej decyzji)
+## Progi decyzyjne ⚠️ ZAKTUALIZOWANE (nie zmieniaj bez wyraźnej decyzji)
 ```
-score < 60   → odrzuć, nie wywołuj agentów
-score ≥ 60   → wywołaj AI Agentów 1–4
-score ≥ 70   → opublikuj na kanale Telegram
+score < 65   → odrzuć, generuj None (jeden próg, nie dwa)
+score ≥ 65   → generuj Signal, zapisz do DB, wyślij na Telegram
 ```
+**UWAGA**: Stare rules miały progi 60/70 (dwa progi). Faktyczny kod używa JEDNEGO progu 65 (`confluence_threshold=65` w `SignalGenerator`). Nie zmieniaj na 60/70.
 
 ## Dynamic swing_length [GROK-2]
-Zakres: 16–40. Obliczany w `utils/dynamic_swing.py`.
-Reżimy zmienności (na podstawie bieżącego ATR vs. mediana ATR z ostatnich 50 świec):
+Zaimplementowany w `smc/swing_detector.py` (nie w osobnym `utils/dynamic_swing.py`).
+Trzy reżimy zmienności (ATR-adaptive):
 ```
-EXTREME (ATR ratio ≥ 2.0)  → swing = base × 0.55, clamp do 16
-HIGH    (ratio 1.4–2.0)    → swing = base × 0.72
-NORMAL  (ratio 0.8–1.4)    → swing = base × 1.00
-LOW     (ratio 0.5–0.8)    → swing = base × 1.30
-FLAT    (ratio < 0.5)      → swing = base × 1.55, clamp do 40
+HIGH    (ATR ratio ≥ 1.4)   → swing_length = 7   (krótki — częste rejony)
+NORMAL  (ratio 0.7–1.4)    → swing_length = 10  (domyślny)
+LOW     (ratio < 0.7)      → swing_length = 14  (długi — rzadkie rejony)
 ```
+**UWAGA**: Stare rules miały 5 reżimów (EXTREME/HIGH/NORMAL/LOW/FLAT) i zakres 16–40. Faktyczny kod używa 3 reżimów i wartości 7/10/14.
 
 ## Absorption Detection [GROK-1]
-Zaimplementowane w `smc/absorption.py`.
-Absorption = `body_ratio ≤ threshold AND volume_ratio ≥ threshold`.
+Zaimplementowane w `engine/confluence_scorer.py` (NIE w osobnym `smc/absorption.py`).
+Absorption = duże ciało świecy (pochodzi impuls) + wysoki wolumen.
 `body_ratio = abs(close - open) / (high - low)`
-Kierunek: długi dolny wick → BULLISH absorption, długi górny wick → BEARISH absorption.
-WAŻNE: Dla EUR/USD i XAU/USD OANDA daje tick volume (proxy), nie prawdziwy wolumen.
+```
+FORMAT: body_ratio > 0.70 AND volume_ratio ≥ 1.5 (Forex) / 2.0 (BTC)
+```
+⚠️ KRYTYCZNE: `body_ratio > 0.70` (duże body = absorpcja) — NIE `≤ 0.30`.
+Stare rules miały odwrotną logikę (`body_max ≤ 0.30` — małe body). To było BŁĘDEM.
+Kierunek: długi dolny wick + duże body up → BULLISH, długi górny wick + duże body down → BEARISH.
+WAżNE: OANDA daje tick volume (proxy) dla EUR/USD i XAU/USD, nie prawdziwy wolumen.
 Dla BTC/USD używaj prawdziwego wolumenu z Binance (CCXT).
 
 ## OB Quality Filters
