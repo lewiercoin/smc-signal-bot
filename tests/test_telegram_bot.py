@@ -258,7 +258,7 @@ def test_setup_registers_handlers():
             result = bot.setup()
 
     assert result is mock_app
-    assert mock_app.add_handler.call_count == 6
+    assert mock_app.add_handler.call_count == 7
     mock_app.add_error_handler.assert_called_once()
 
 

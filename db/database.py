@@ -305,6 +305,35 @@ class Database:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def get_closed_signals(
+        self,
+        days: int = 28,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Retrieve closed signals for Optimizer analysis.
+
+        Args:
+            days: Look-back window in days (default 28 = 4 weeks).
+            limit: Maximum rows to return.
+
+        Returns:
+            List of closed signal dicts ordered oldest-first.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM signals
+            WHERE status NOT IN ('OPEN', 'PENDING')
+              AND closed_at IS NOT NULL
+              AND closed_at >= datetime('now', ? || ' days')
+            ORDER BY closed_at ASC
+            LIMIT ?
+            """,
+            (f"-{days}", limit),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
     def save_candles(self, candles: list[dict[str, Any]]) -> None:
         """Upsert candles (INSERT OR REPLACE).
 

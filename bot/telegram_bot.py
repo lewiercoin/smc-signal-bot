@@ -65,6 +65,7 @@ class TelegramBot:
 
         app = Application.builder().token(self.token).build()
 
+        app.add_handler(CommandHandler("start", self._cmd_start))
         app.add_handler(CommandHandler("status", self._cmd_status))
         app.add_handler(CommandHandler("scan", self._cmd_scan))
         app.add_handler(CommandHandler("last", self._cmd_last))
@@ -75,7 +76,7 @@ class TelegramBot:
         app.add_error_handler(self._error_handler)
 
         self._app = app
-        log.info("bot_setup_complete", handlers=6)
+        log.info("bot_setup_complete", handlers=7)
         return app
 
     # ── Webhook / polling ─────────────────────────────────────────────────────
@@ -169,6 +170,22 @@ class TelegramBot:
             "fundamental_bias": "",
             "risk_notes": [],
         }
+
+    # ── Public commands ──────────────────────────────────────────────────────
+
+    async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Publiczna komenda /start — wyswietla disclaimer i opis bota."""
+        text = (
+            "<b>SMC Signal Bot</b>\n"
+            "Sygnaly tradingowe oparte o strategie Smart Money Concepts (ICT).\n"
+            "Instrumenty: EUR/USD, XAU/USD, BTC/USD\n\n"
+            "<b>Disclaimer:</b>\n"
+            "Sygnaly maja charakter edukacyjny. Nie sa rekomendacjami inwestycyjnymi. "
+            "Trading wiaze sie z ryzykiem utraty kapitalu. "
+            "Przed inwestowaniem zapoznaj sie z ryzykiem.\n\n"
+            "Dolacz do kanalu sygnalowego aby otrzymywac sygnaly."
+        )
+        await update.message.reply_text(text, parse_mode="HTML")
 
     # ── Admin commands ─────────────────────────────────────────────────────────
 
