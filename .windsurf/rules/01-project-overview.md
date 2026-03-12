@@ -49,14 +49,15 @@ smc-signal-bot/
 ├── db/
 │   └── database.py            ← Database (SQLite, signals+candles+ob_quality+optimizer)
 ├── paper_trading/
-│   └── runner.py              ← PaperTradingRunner (Tydzień 8)
+│   ├── runner.py              ← PaperTradingRunner (Tydzień 8)
+│   └── analyzer.py            ← PaperAnalyzer, AnalysisReport, PairStats
 ├── tests/
 │   ├── integration/           ← conftest.py + test_pipeline.py + test_signal_flow.py
 │   └── test_*.py              ← unit testy (381 łącznie)
-├── main.py                    ← entry: `python main.py` lub `python main.py paper`
+├── main.py                    ← entry: `python main.py` | `python main.py paper` | `python main.py analyze`
 └── requirements.txt
 ```
-**UWAGA**: Brak pliku `config/` — parametry są hardcoded w modułach (np. `MAX_SPREADS`, `PIP_VALUES`, `REWARD_RATIOS` w `risk_engine.py`). Nie twórz YAML config bez decyzji.
+**UWAGA**: Katalog `config/` istnieje ale jest pusty (`config/profiles/` — zarezerwowany na przyszłość). Parametry są hardcoded w modułach (`MAX_SPREADS`, `PIP_VALUES`, `REWARD_RATIOS` w `risk_engine.py`). Nie twórz YAML config bez decyzji.
 
 ## Harmonogram — STAN na Tydzień 7 (UKOŃCZONE)
 - ✅ Tydz 1–2: Fundament (OANDA, DQ, SQLite v2.2)

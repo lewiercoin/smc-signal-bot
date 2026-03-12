@@ -16,7 +16,7 @@
 | COT (futures positioning) | CFTC API | FAZA 2 — nie MVP |
 | Fear & Greed BTC | alternative.me | FAZA 2 — nie MVP |
 
-## Schemat SQLite — tabele (plik: db/schema.sql)
+## Schemat SQLite — tabele (zdefiniowany inline w `db/database.py`, brak osobnego `schema.sql`)
 
 ### signals (główna tabela) — stan po migracji Tydzień 7
 ```sql
