@@ -44,6 +44,7 @@ class Database:
             """
             CREATE TABLE IF NOT EXISTS signals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                signal_uuid TEXT,
                 instrument TEXT NOT NULL,
                 direction TEXT NOT NULL,
                 entry_price REAL,
@@ -129,6 +130,14 @@ class Database:
             """
         )
 
+        # Migration: add signal_uuid column if it doesn't exist (Strategy A)
+        try:
+            cursor.execute("ALTER TABLE signals ADD COLUMN signal_uuid TEXT")
+            self.conn.commit()
+            self.logger.info("migrated_signal_uuid_column")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         self.conn.commit()
         self.logger.info("database_tables_initialized")
 
@@ -146,12 +155,13 @@ class Database:
         cursor.execute(
             """
             INSERT INTO signals (
-                instrument, direction, entry_price, sl_price,
+                signal_uuid, instrument, direction, entry_price, sl_price,
                 tp1_price, tp2_price, tp3_price, confluence_score, session,
                 status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
             """,
             (
+                signal.get("signal_uuid"),
                 signal.get("instrument"),
                 signal.get("direction"),
                 signal.get("entry_price"),
@@ -204,6 +214,57 @@ class Database:
             status=status,
             pnl_r=pnl_r,
         )
+
+    def update_signal_status_by_uuid(
+        self,
+        signal_uuid: str,
+        status: str,
+        closed_price: float,
+        pnl_r: float,
+    ) -> None:
+        """Update signal status by UUID.
+
+        Args:
+            signal_uuid: UUID of signal to update
+            status: New status (TP1, TP2, TP3, SL, BE, EXPIRED)
+            closed_price: Price at close
+            pnl_r: PnL in R multiples
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE signals
+            SET status = ?, closed_price = ?, pnl_r = ?, closed_at = CURRENT_TIMESTAMP
+            WHERE signal_uuid = ?
+            """,
+            (status, closed_price, pnl_r, signal_uuid),
+        )
+
+        self.conn.commit()
+        self.logger.info(
+            "signal_status_updated_by_uuid",
+            signal_uuid=signal_uuid,
+            status=status,
+            pnl_r=pnl_r,
+        )
+
+    def get_signal_by_uuid(self, signal_uuid: str) -> dict[str, Any] | None:
+        """Retrieve a single signal by its UUID.
+
+        Args:
+            signal_uuid: The UUID string from Signal.id
+
+        Returns:
+            Signal dict or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM signals WHERE signal_uuid = ?",
+            (signal_uuid,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row is not None else None
 
     def get_signals(
         self,
