@@ -337,6 +337,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 5 (Część 3):** ✅ UKOŃCZONY (Optimizer ✅)
 - **Tydzień 5:** ✅ UKOŃCZONY
 - **Tydzień 6:** ✅ UKOŃCZONY (TelegramBot ✅, SignalScheduler ✅, BotMonitor ✅, main.py ✅)
+- **Tydzień 7:** ✅ UKOŃCZONY (DB fix ✅, Integration Tests ✅, Paper Trading Runner ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -465,6 +466,7 @@ Optimizer: weekly, offline, READ-ONLY
 | 6 | `main.py` | — | Entry point: asyncio.run(main()), webhook or polling |
 
 **Łączna liczba testów: 302 + 28 = 349** (po dodaniu Tydzień 6: +28 testów)
+**Łączna liczba testów: 349 + 22 = 371** (po dodaniu Tydzień 7: +22 integration tests)
 
 ### Telegram Bot — konfiguracja (Tydzień 6)
 
@@ -492,7 +494,48 @@ Optimizer: weekly, offline, READ-ONLY
 
 **Entry point:** `python main.py` → `asyncio.run(main())`
 
-### Następny krok: Tydzień 7 — Integration Tests + Paper Trading
+### Następny krok: Tydzień 8–9 — Live Testing + Optymalizacja
+
+### Tydzień 7 — Integration Tests + Paper Trading ✅ UKOŃCZONY
+
+| Moduł | Status | Testy | Uwagi |
+|-------|--------|-------|-------|
+| `db/database.py` | ✅ | — | DB fix: `signal_uuid TEXT` column (Strategy A), migration w `initialize()` |
+| `engine/signal_generator.py` | ✅ | — | `_save_signal()` teraz zapisuje `signal_uuid` do DB |
+| `tests/integration/conftest.py` | ✅ | — | Realistic fixtures: EUR/USD, XAU/USD, BTC/USD, flat; seed(42) |
+| `tests/integration/test_pipeline.py` | ✅ | 12 | End-to-end pipeline tests: DQ gates, SMC detectors, Confluence, Risk, Agents |
+| `tests/integration/test_signal_flow.py` | ✅ | 10 | Signal lifecycle: UUID→DB, status update, sanity checks, edge cases |
+| `paper_trading/runner.py` | ✅ | — | PaperTradingRunner: async run loop, equity tracking, max drawdown, JSON summary |
+
+**Łączna liczba testów: 349 + 22 = 371**
+
+### DB fix — Signal UUID compatibility (Strategy A)
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT` — zachowany (backward compat)
+- `signal_uuid TEXT` — nowa kolumna, przechowuje `Signal.id` (UUID)
+- Migration: `ALTER TABLE signals ADD COLUMN signal_uuid TEXT` w `initialize()` — safe (no-op jeśli kolumna istnieje)
+- Nowe metody: `get_signal_by_uuid()`, `update_signal_status_by_uuid()`
+- `_save_signal()` w `signal_generator.py` teraz przekazuje `signal_uuid=signal.id`
+
+### Paper Trading
+
+- **Uruchomienie:** `python main.py paper` → 24h paper trading
+- **Logi:** `paper_trading/logs/summary_YYYYMMDD_HHMM.json`
+- **Metryki:** total_trades, win_rate, total_pnl, return_pct, max_drawdown
+- **PaperTrade dataclass:** mutable (NIE frozen) — lifecycle: open → closed
+- **DI pattern:** `PaperTradingRunner(oanda_client=mock, db=in_memory_db)` = testable
+- **PnL:** per-instrument pip values (EUR=10$/lot/pip, XAU=1$/lot/pip, BTC=1$/lot/pip)
+
+### Integration Tests — strategia asercji
+
+- Mock TYLKO zewnętrzne API (OANDA, Telegram, Anthropic, News)
+- Wewnętrzne moduły BEZ mocków — to sens integration testów
+- Stabilne asercje: type checks + range checks, NIE twarde `len() > 0`
+- `random.seed(42)` w każdej fixture — powtarzalność
+- In-memory SQLite w testach — szybkie i izolowane
+- `_force_signal()` helper: patches scorer+risk z mockami, real DQ+DB
+
+---
 
 - `smc/utils.py` zawiera dwie funkcje ATR (bez pandas-ta, czysta implementacja):
   - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
