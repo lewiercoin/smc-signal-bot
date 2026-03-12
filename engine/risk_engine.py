@@ -400,10 +400,12 @@ class RiskEngine:
 
         Args:
             pair: Instrument key.
-            current_spread: Current spread in pip units; None = no data.
+            current_spread: Current spread in price units (ask - bid), as returned
+                by OandaClient.get_current_spread(). None = no data available.
 
         Returns:
-            SpreadCheck with passed flag, spread data, and reason string.
+            SpreadCheck with passed flag, spread data (in original price units),
+            and reason string.
         """
         max_allowed = MAX_SPREADS.get(pair, 5.0)
 
@@ -416,11 +418,24 @@ class RiskEngine:
                 reason="No spread data available — assuming acceptable",
             )
 
-        if current_spread > max_allowed:
+        # Convert price units → pips before comparing against MAX_SPREADS (pip limits).
+        # OandaClient.get_current_spread() returns ask - bid in price terms.
+        # Example: EUR/USD 0.00012 price = 0.00012 / 0.0001 = 1.2 pips.
+        pip_size = PIP_VALUES.get(pair, {"pip_size": 0.0001})["pip_size"]
+        spread_in_pips = current_spread / pip_size
+
+        if spread_in_pips > max_allowed:
             reason = (
-                f"Spread {current_spread:.2f} exceeds max {max_allowed:.2f} for {pair}"
+                f"Spread {spread_in_pips:.1f} pips (raw: {current_spread}) "
+                f"exceeds max {max_allowed:.1f} for {pair}"
             )
-            self.logger.info("spread_rejected", pair=pair, spread=current_spread, max=max_allowed)
+            self.logger.info(
+                "spread_rejected",
+                pair=pair,
+                spread_pips=spread_in_pips,
+                spread_price=current_spread,
+                max_pips=max_allowed,
+            )
             return SpreadCheck(
                 passed=False,
                 current_spread=current_spread,
