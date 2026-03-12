@@ -467,6 +467,17 @@ Optimizer: weekly, offline, READ-ONLY
 
 **Łączna liczba testów: 302 + 28 = 349** (po dodaniu Tydzień 6: +28 testów)
 **Łączna liczba testów: 349 + 22 = 371** (po dodaniu Tydzień 7: +22 integration tests)
+**Łączna liczba testów: 371 + 1 = 372** (po post-T7 audit: +1 test no-internal-mocks)
+
+### Post-Tydzień 7 — Audit fixes ✅
+
+| Fix | Plik | Problem | Rozwiązanie |
+|-----|------|---------|-------------|
+| FIX 1 (BLOCKER) | `bot/telegram_bot.py` | `send_signal()` wywoływał `update_signal_status(signal_id=signal.id)` — `signal.id` to UUID string, metoda szukała po `WHERE id = ?` (INTEGER PK) → status nigdy się nie aktualizował | Zamieniono na `update_signal_status_by_uuid(signal_uuid=signal.id)` |
+| FIX 1b | `tests/test_telegram_bot.py` | Unit test asertował `mock_db.update_signal_status.assert_called_once()` — teraz metoda ma inną nazwę | Zaktualizowano na `mock_db.update_signal_status_by_uuid.assert_called_once()` |
+| FIX 1c | `tests/integration/test_signal_flow.py` | `test_signal_status_updated_after_send` wywoływał DB bezpośrednio — nie testował prawdziwego flow | Przepisano: wywołuje `TelegramBot.send_signal()` z mock Telegram → sprawdza DB przez `get_signal_by_uuid()` |
+| FIX 2 | `tests/integration/test_pipeline.py` | `_make_sg()` domyślny spread `1.2` = 12000 pips EUR (absurdalny). XAU `2.0` = 200 pips. BTC `50.0` = 50 pips. Testy przechodziły bo asercje dopuszczały `None` — maskowały problem spreadu | `REALISTIC_SPREADS = {EUR_USD: 0.00012, XAU_USD: 0.30, BTC_USD: 20.0}` w price units; `_make_sg()` używa spreadu per-pair domyślnie |
+| FIX 3 | `tests/integration/test_signal_flow.py` | Brak testu bez żadnych internal mocków | Dodano `TestNoInternalMocks::test_full_pipeline_no_internal_mocks` — pipeline end-to-end bez `patch.object` na scorer/risk/detectors |
 
 ### Telegram Bot — konfiguracja (Tydzień 6)
 
