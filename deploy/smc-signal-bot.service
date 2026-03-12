@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/smc-signal-bot
+EnvironmentFile=/root/smc-signal-bot/.env
 Environment=PATH=/root/smc-signal-bot/.venv/bin:/usr/bin
 ExecStart=/root/smc-signal-bot/.venv/bin/python main.py
 Restart=always
