@@ -396,6 +396,7 @@ class SignalGenerator:
         """
         try:
             payload: dict[str, Any] = {
+                "signal_uuid": signal.id,
                 "instrument": signal.pair,
                 "direction": signal.direction,
                 "entry_price": signal.entry,
