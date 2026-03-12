@@ -273,10 +273,25 @@ class PaperTradingRunner:
             "win_rate": len(wins) / len(closed) if closed else 0.0,
             "total_pnl": round(sum(t.pnl for t in closed), 2),
             "final_balance": round(self.balance, 2),
+            "initial_balance": self.initial_balance,
             "return_pct": round(
                 (self.balance - self.initial_balance) / self.initial_balance * 100, 2
             ),
-            "max_drawdown": self._calculate_max_drawdown(),
+            "max_drawdown_pct": self._calculate_max_drawdown(),
+            "trades": [
+                {
+                    "pair": t.pair,
+                    "direction": t.direction,
+                    "entry": t.entry,
+                    "pnl_r": round(t.pnl / (abs(t.entry - t.stop_loss) * t.lots) if t.lots and t.entry != t.stop_loss else 0.0, 3),
+                    "exit_reason": t.close_reason.upper() if t.close_reason else "",
+                    "risk_reward": round(abs(t.tp1 - t.entry) / abs(t.entry - t.stop_loss) if t.entry != t.stop_loss else 0.0, 3),
+                    "confluence_score": t.confluence_score,
+                    "entry_time": t.opened_at.isoformat(),
+                    "status": t.status,
+                }
+                for t in self.trades
+            ],
         }
 
         log.info("paper_trading_summary", **summary)

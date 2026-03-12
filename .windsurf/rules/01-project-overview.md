@@ -40,7 +40,7 @@ smc-signal-bot/
 │   ├── base_agent.py          ← BaseAgent, AgentResult, AgentTier enum
 │   ├── structure_agent.py     ← StructureAgent
 │   ├── fundamental_agent.py   ← FundamentalAgent
-│   ├── risk_agent.py          ← RiskAgent
+│   ├── risk_verifier.py       ← RiskVerifierAgent
 │   └── telegram_editor.py     ← TelegramEditor
 ├── bot/
 │   ├── telegram_bot.py        ← TelegramBot (webhook+polling)

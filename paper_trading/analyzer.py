@@ -375,32 +375,32 @@ class PaperAnalyzer:
     def print_report(self, report: AnalysisReport) -> None:
         """Print a formatted analysis report to stdout."""
         w = 46
-        sep = "═" * w
+        sep = "-" * w
 
         def line(text: str = "") -> None:
-            print(f"║ {text:<{w - 3}}║")
+            print(f"| {text:<{w - 3}}|")
 
-        print(f"╔{sep}╗")
-        print(f"║{'SMC Signal Bot — Paper Trading':^{w}}║")
-        print(f"║{'Analysis Report':^{w}}║")
-        print(f"╠{sep}╣")
+        print(f"+{sep}+")
+        print(f"|{'SMC Signal Bot -- Paper Trading':^{w}}|")
+        print(f"|{'Analysis Report':^{w}}|")
+        print(f"+{sep}+")
 
         line(
             f"Sessions: {report.total_sessions}"
-            f"  │  Trades: {report.total_trades}"
-            f"  │  Closed: {report.total_closed}"
+            f"  |  Trades: {report.total_trades}"
+            f"  |  Closed: {report.total_closed}"
         )
         pnl_sign = "+" if report.overall_pnl >= 0 else ""
         line(
             f"Win Rate: {report.overall_win_rate:.1%}"
-            f"  │  PnL: {pnl_sign}{report.overall_pnl:.2f}R"
+            f"  |  PnL: {pnl_sign}{report.overall_pnl:.2f}R"
         )
         ret_sign = "+" if report.overall_return_pct >= 0 else ""
         line(
             f"Max Drawdown: {report.max_drawdown:.1f}%"
-            f"  │  Return: {ret_sign}{report.overall_return_pct:.1f}%"
+            f"  |  Return: {ret_sign}{report.overall_return_pct:.1f}%"
         )
-        print(f"╠{sep}╣")
+        print(f"+{sep}+")
 
         if report.by_pair:
             for pair, stats in sorted(report.by_pair.items()):
@@ -413,30 +413,30 @@ class PaperAnalyzer:
         else:
             line("No per-pair data available")
 
-        print(f"╠{sep}╣")
+        print(f"+{sep}+")
 
         line(f"Confluence: avg={report.avg_confluence_score:.0f}"
              f"  min={report.min_confluence_score}"
              f"  max={report.max_confluence_score}")
         line(f"Avg R:R: {report.avg_risk_reward:.2f}"
-             f"  │  SL rate: {report.sl_hit_rate:.0%}"
-             f"  │  TP1: {report.tp1_hit_rate:.0%}")
+             f"  |  SL rate: {report.sl_hit_rate:.0%}"
+             f"  |  TP1: {report.tp1_hit_rate:.0%}")
         line(f"Best time: {report.best_session_time}")
         line(f"Worst time: {report.worst_session_time}")
 
-        print(f"╠{sep}╣")
+        print(f"+{sep}+")
 
-        ready_str = "✅ YES" if report.ready_for_live else "❌ NO"
+        ready_str = "YES" if report.ready_for_live else "NO"
         line(f"READY FOR LIVE: {ready_str}")
 
         if report.issues:
             line("Issues:")
             for issue in report.issues:
-                line(f"  ✗ {issue}")
+                line(f"  [BLOCK] {issue}")
 
         if report.recommendations:
             line("Recommendations:")
             for rec in report.recommendations:
-                line(f"  • {rec}")
+                line(f"  - {rec}")
 
-        print(f"╚{sep}╝")
+        print(f"+{sep}+")
