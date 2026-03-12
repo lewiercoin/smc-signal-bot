@@ -53,13 +53,13 @@ smc-signal-bot/
 │   └── analyzer.py            ← PaperAnalyzer, AnalysisReport, PairStats
 ├── tests/
 │   ├── integration/           ← conftest.py + test_pipeline.py + test_signal_flow.py
-│   └── test_*.py              ← unit testy (381 łącznie)
+│   └── test_*.py              ← unit testy (387 łącznie)
 ├── main.py                    ← entry: `python main.py` | `python main.py paper` | `python main.py analyze`
 └── requirements.txt
 ```
 **UWAGA**: Katalog `config/` istnieje ale jest pusty (`config/profiles/` — zarezerwowany na przyszłość). Parametry są hardcoded w modułach (`MAX_SPREADS`, `PIP_VALUES`, `REWARD_RATIOS` w `risk_engine.py`). Nie twórz YAML config bez decyzji.
 
-## Harmonogram — STAN na Tydzień 8 (UKOŃCZONE)
+## Harmonogram — STAN na Tydzień 9 (UKOŃCZONE)
 - ✅ Tydz 1–2: Fundament (OANDA, DQ, SQLite v2.2)
 - ✅ Tydz 3: SMC Engine (OB, FVG, BoS, liquidity sweep, absorption w confluence_scorer)
 - ✅ Tydz 4: IPDA + Confluence Scorer (110 pkt max, próg 65)
@@ -67,7 +67,7 @@ smc-signal-bot/
 - ✅ Tydz 6: AI Agenci 1–4 + 3-tier fallback (Cache→Haiku→Deterministic)
 - ✅ Tydz 7: Telegram Bot (webhook+polling) + integration tests
 - ✅ Tydz 8: Deploy infra + PaperTradingRunner + PaperAnalyzer + rules sync (381 testów)
-- ⬜ Tydz 9: Optimizer Agent + Soft Launch publiczny
+- ✅ Tydz 9: Optimizer Agent wired (cron niedz 20:00 UTC) + /start disclaimer + Soft Launch (387 testów)
 
 ## Budżet
 < $500 łącznie. VPS: Hetzner CX22 (~$4/mc). API AI: ~$3–8/mc.
