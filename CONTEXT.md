@@ -336,6 +336,7 @@ Dodatkowe tabele: `economic_events`, `ob_quality_log`, `optimizer_log`, `candles
 - **Tydzień 5 (Część 2):** ✅ UKOŃCZONY (RiskVerifier ✅, TelegramEditor ✅)
 - **Tydzień 5 (Część 3):** ✅ UKOŃCZONY (Optimizer ✅)
 - **Tydzień 5:** ✅ UKOŃCZONY
+- **Tydzień 6:** ✅ UKOŃCZONY (TelegramBot ✅, SignalScheduler ✅, BotMonitor ✅, main.py ✅)
 
 ### Ukończone moduły (Tydzień 2 ✅ UKOŃCZONY)
 
@@ -454,7 +455,44 @@ Pipeline: Structure → Fundamental → RiskVerifier → TelegramEditor → Tele
 Optimizer: weekly, offline, READ-ONLY
 3-tier fallback: Cache-first → LLM (Haiku) → Deterministic
 
-### Następny krok: Tydzień 6 — Telegram Bot + Monitoring
+### Tydzień 6 — Telegram Bot + Monitoring ✅ UKOŃCZONY
+
+| Tydzień | Moduł | Testy | Uwagi |
+|---------|-------|-------|-------|
+| 6 | `bot/telegram_bot.py` | 12 | TelegramBot: webhook+polling, admin commands, send_signal |
+| 6 | `bot/scheduler.py` | 8 | SignalScheduler: APScheduler AsyncIOScheduler, session filter |
+| 6 | `bot/monitoring.py` | 8 | BotMonitor: health checks, counters, daily stats |
+| 6 | `main.py` | — | Entry point: asyncio.run(main()), webhook or polling |
+
+**Łączna liczba testów: 302 + 28 = 349** (po dodaniu Tydzień 6: +28 testów)
+
+### Telegram Bot — konfiguracja (Tydzień 6)
+
+**Env vars wymagane:**
+- `TELEGRAM_BOT_TOKEN` — token z @BotFather
+- `TELEGRAM_CHANNEL_ID` — ID kanału (np. `@smc_signals` lub numeryczne `-100...`)
+- `TELEGRAM_ADMIN_CHAT_ID` — ID prywatnego chatu Grega (admin commands)
+- `WEBHOOK_URL` — opcjonalny; brak = tryb polling (dev)
+
+**Webhook vs Polling:**
+- Webhook primary (Hetzner CX22 ma stały IP) — `WEBHOOK_URL=https://<ip>:8443`
+- Polling fallback gdy `WEBHOOK_URL` nie ustawiony (lokalne dev)
+
+**Scan interval:** 15 minut (H1 timeframe — 4 szanse na nową świecę)
+
+**Active sessions only:** 07:00–21:00 UTC, Mon–Fri (London + NY)
+- Weekendy i sesja azjatycka (00:00–07:00) → scan pominięty
+
+**Admin commands:** `/status /scan /last /pairs /health /help`
+- Auth: `update.effective_chat.id == int(admin_chat_id)` — hard check, brak odpowiedzi dla nie-adminów
+
+**BotMonitor — in-memory (Faza 1):**
+- Countery: `scan_count`, `signal_count`, `error_count`, `last_scan_time`, `last_error`
+- Persistent metrics w Fazie 2
+
+**Entry point:** `python main.py` → `asyncio.run(main())`
+
+### Następny krok: Tydzień 7 — Integration Tests + Paper Trading
 
 - `smc/utils.py` zawiera dwie funkcje ATR (bez pandas-ta, czysta implementacja):
   - `calculate_atr_scalar(candles, period)` → single float (prosta średnia TR, używana przez SwingDetector)
