@@ -5,11 +5,14 @@ import os
 import sys
 
 import structlog
+from dotenv import load_dotenv
 
 from agents.optimizer import Optimizer
 from bot.scheduler import SignalScheduler
 from bot.telegram_bot import TelegramBot
 from db.database import Database
+
+load_dotenv()
 
 log = structlog.get_logger()
 
