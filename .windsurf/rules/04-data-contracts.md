@@ -18,65 +18,31 @@
 
 ## Schemat SQLite — tabele (plik: db/schema.sql)
 
-### signals (główna tabela)
+### signals (główna tabela) — stan po migracji Tydzień 7
 ```sql
 CREATE TABLE signals (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_uuid         TEXT,                   -- UUID z Signal.id (Strategy A fix T7)
     instrument          TEXT NOT NULL,          -- EUR_USD / XAU_USD / BTC_USD
-    direction           TEXT NOT NULL,          -- LONG / SHORT
-    setup_type          TEXT NOT NULL,          -- PPDD_OB / FVG_STACKED / BF_1H
-    
-    -- Strefy cenowe
-    ob_top              REAL, ob_bottom REAL,
-    fvg_top             REAL, fvg_bottom REAL,
+    direction           TEXT NOT NULL,          -- bullish / bearish (lowercase!)
     entry_price         REAL,
     sl_price            REAL,
-    tp1_price           REAL, tp2_price REAL, tp3_price REAL,
-    
-    -- Scoring
-    confluence_score    INTEGER,
-    ipda_percent        REAL,
-    session_bucket      TEXT,                   -- LONDON / NY / OVERLAP / ASIA / OTHER
-    
-    -- OB Quality [v2.1]
-    bar_ratio           REAL,
-    rvr_ratio           REAL,
-    ob_tap_count        INTEGER DEFAULT 0,
-    ob_status           TEXT DEFAULT 'ACTIVE',  -- ACTIVE / EXHAUSTED
-    
-    -- Absorption [GROK-1 v2.2]
-    absorption_detected BOOLEAN DEFAULT FALSE,
-    absorption_type     TEXT DEFAULT 'NONE',    -- BULLISH / BEARISH / NEUTRAL / NONE
-    absorption_strength TEXT DEFAULT 'NONE',    -- STRONG / MODERATE / NONE
-    
-    -- Dynamic Swing [GROK-2 v2.2]
-    swing_length_used   INTEGER,
-    volatility_regime   TEXT,                   -- NORMAL / HIGH / EXTREME / LOW / FLAT
-    
-    -- AI Agenci
-    agent1_score        INTEGER,
-    agent1_recommendation TEXT,
-    agent2_sentiment    TEXT,                   -- POZYTYWNY / NEGATYWNY / MIESZANY
-    agent4_message      TEXT,
-    llm_provider        TEXT DEFAULT 'claude_haiku',  -- claude_haiku / ollama_llama3 / template_fallback
-    
-    -- Trigger
-    trigger_tf          TEXT DEFAULT '1H',      -- CHoCH_1H / BF_1H / 4H_direct
-    
-    -- Wyniki
-    status              TEXT DEFAULT 'OPEN',    -- OPEN / TP1 / TP2 / TP3 / SL / BE / EXPIRED
-    result_r            REAL,                   -- wynik w R (np. 1.5, -1.0, 0.0)
-    
-    -- Timestamps
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    closed_at           TIMESTAMP,
-    expires_at          TIMESTAMP,
-    
-    -- Compliance
-    news_risk           TEXT DEFAULT 'LOW',
-    published_to_tg     BOOLEAN DEFAULT FALSE
+    tp1_price           REAL,
+    tp2_price           REAL,
+    tp3_price           REAL,
+    confluence_score    REAL,
+    risk_reward         REAL,
+    lot_size            REAL,
+    atr_at_entry        REAL,
+    status              TEXT DEFAULT 'OPEN',    -- OPEN / sent / closed
+    closed_price        REAL,
+    pnl_r               REAL,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+**KRYTYCZNE**: `Signal.id` to UUID string (np. `"a1b2c3d4-..."`), NIE integer.
+Do szukania po UUID: `db.get_signal_by_uuid(uuid)` i `db.update_signal_status_by_uuid(uuid, ...)`.
+NIGDY nie łącz `Signal.id` z `signals.id` (INTEGER PK) — to inny typ.
 
 ### economic_events
 ```sql

@@ -17,14 +17,20 @@ Jeśli którakolwiek z poniższych zmian jest częścią Twojego planu,
 - Migracje tylko przez osobny plik `db/migrations/YYYYMMDD_opis.sql`
 
 ### Progi confluence (źródło prawdy: `02-smc-conventions.md`)
-- Nie zmieniaj progów 60 (agenci) i 70 (Telegram) bez wyraźnej decyzji
+- Próg to **65** (jeden próg, nie dwa). NIE zmieniaj na 60 ani 70.
 - Nie zmieniaj wag scoringu bez analizy danych z `ob_quality_log`
 - Nie zmieniaj zakresów IPDA (0–40 / 40–60 / 60–100)
 
 ### Logika risk engine
-- Nie zmieniaj maksymalnego ryzyka per trade (1.25%)
+- Nie zmieniaj maksymalnego ryzyka per trade (**2%**, nie 1.25%)
 - Nie usuwaj circuit breakerów (dzienna strata, korelacja portfela)
-- Nie zmieniaj poziomów TP (1.5R/2.5R/4.0R dla EUR, itd.)
+- Nie zmieniaj poziomów TP: **EUR/XAU: 1.5R/2.5R/3.5R, BTC: 1.5R/2.5R/5.5R**
+- Spread porównuj zawsze w **pip units** (konwertuj price units przez `/ pip_size` w `_check_spread()`)
+
+### Signal.id — UUID, nie integer
+- `Signal.id` to UUID string (`str(uuid.uuid4())`)
+- `signals.id` w DB to INTEGER PRIMARY KEY (autoincrement) — to inny klucz
+- Do aktualizacji statusu zawsze używaj `update_signal_status_by_uuid()`, nigdy `update_signal_status(signal_id=signal.id)`
 
 ### Klucze API i zmienne środowiskowe
 - Nigdy nie wpisuj kluczy API bezpośrednio w kodzie
@@ -98,4 +104,23 @@ NIE używaj finnhub sentiment API dla walut ani metali.
 
 ### TP3 = 8R dla BTC — ODRZUCONY
 8R na timeframe 4H jest nierealistyczne — wicki BTC invalidują BE zanim cena dojdzie do celu.
-BTC: TP1=1.2R (50%), TP2=2.5R (25%), TP3=4.5R (25%).
+BTC: TP1=1.5R, TP2=2.5R, TP3=5.5R (zaimplementowane w `REWARD_RATIOS` w `risk_engine.py`).
+
+### Absorption body_ratio — NIE odwracaj logiki
+Absorption = **duże** ciało świecy: `body_ratio > 0.70`.
+NIE zmieniaj na `body_ratio ≤ 0.30` (stara błędna specyfikacja). Mała świeca to doji/pin bar, nie absorption.
+
+### Spread gate — price units vs pip units
+`OandaClient.get_current_spread()` zwraca **price units** (ask - bid, np. 0.00012 dla EUR/USD).
+`MAX_SPREADS` w `risk_engine.py` są w **pip units** (np. 2.0 pips).
+`_check_spread()` musi konwertować: `spread_in_pips = current_spread / pip_size`.
+NIE porównuj raw price units z pip limits — to bug który powoduje że spread gate nigdy nie blokuje.
+
+### Signal.id UUID — nie używaj do zapytań INTEGER PK
+`send_signal()` w `TelegramBot` wywołuje `update_signal_status_by_uuid(signal_uuid=signal.id)`.
+NIGDY nie zmieniaj tego na `update_signal_status(signal_id=signal.id)` — UUID string nie trafi w INTEGER PK.
+
+### 3-tier fallback — Ollama odrzucony
+Fallback chain: **Cache → Claude Haiku → Deterministic** (template).
+Ollama llama3:8b został odrzucony z powodu overhead i złożoności deploymentu.
+NIE dodawaj Ollama jako pośredniego tier.
