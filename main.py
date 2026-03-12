@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 
 import structlog
 
@@ -35,4 +36,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if len(sys.argv) > 1 and sys.argv[1] == "paper":
+        from paper_trading.runner import PaperTradingRunner
+        runner = PaperTradingRunner()
+        asyncio.run(runner.run(duration_hours=24))
+    else:
+        asyncio.run(main())
