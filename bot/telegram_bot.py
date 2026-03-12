@@ -124,8 +124,8 @@ class TelegramBot:
                 parse_mode="HTML",
             )
 
-            self.db.update_signal_status(
-                signal_id=signal.id,
+            self.db.update_signal_status_by_uuid(
+                signal_uuid=signal.id,
                 status="sent",
                 closed_price=signal.entry,
                 pnl_r=0.0,

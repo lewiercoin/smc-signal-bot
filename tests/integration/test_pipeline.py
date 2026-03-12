@@ -23,18 +23,31 @@ from smc.swing_detector import SwingDetector, SwingResult
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+# Realistic spreads in price units (ask - bid), matching get_current_spread() output.
+# EUR_USD pip=0.0001: 1.2 pip = 0.00012; XAU pip=0.01: 30 cent = 0.30; BTC pip=1.0: $20 = 20.0
+REALISTIC_SPREADS: dict[str, float] = {
+    "EUR_USD": 0.00012,
+    "XAU_USD": 0.30,
+    "BTC_USD": 20.0,
+}
+
+
 def _make_sg(
     candles: list[Candle],
     mock_news: MagicMock,
     db: Database,
     pair: str = "EUR_USD",
-    spread: float = 1.2,
+    spread: float | None = None,
 ) -> SignalGenerator:
-    """Build a SignalGenerator with mocked external APIs, real internals."""
+    """Build a SignalGenerator with mocked external APIs, real internals.
+
+    spread defaults to REALISTIC_SPREADS[pair] if not provided.
+    """
+    resolved_spread = spread if spread is not None else REALISTIC_SPREADS.get(pair, 0.00012)
     oanda = MagicMock()
     # Both LTF (count=100) and HTF (count=50) calls return the same candles
     oanda.get_candles.return_value = candles
-    oanda.get_current_spread.return_value = spread
+    oanda.get_current_spread.return_value = resolved_spread
 
     return SignalGenerator(
         oanda_client=oanda,
@@ -57,7 +70,7 @@ class TestFullPipelineEndToEnd:
         """EUR/USD full pipeline — returns Signal or None, never raises."""
         sg = _make_sg(realistic_eur_usd_candles, mock_news_client, in_memory_db, "EUR_USD")
 
-        result = sg.generate("EUR_USD", "H1", account_balance=10000.0)
+        result = sg.generate("EUR_USD", "H1", account_balance=10000.0)  # spread=0.00012
 
         assert result is None or isinstance(result, Signal)
         if result is not None:
@@ -74,7 +87,7 @@ class TestFullPipelineEndToEnd:
         in_memory_db: Database,
     ) -> None:
         """XAU/USD full pipeline — returns Signal or None, never raises."""
-        sg = _make_sg(realistic_xau_usd_candles, mock_news_client, in_memory_db, "XAU_USD", spread=2.0)
+        sg = _make_sg(realistic_xau_usd_candles, mock_news_client, in_memory_db, "XAU_USD")
 
         result = sg.generate("XAU_USD", "H1", account_balance=10000.0)
 
@@ -92,7 +105,7 @@ class TestFullPipelineEndToEnd:
         in_memory_db: Database,
     ) -> None:
         """BTC/USD full pipeline — returns Signal or None, never raises."""
-        sg = _make_sg(realistic_btc_usd_candles, mock_news_client, in_memory_db, "BTC_USD", spread=50.0)
+        sg = _make_sg(realistic_btc_usd_candles, mock_news_client, in_memory_db, "BTC_USD")
 
         result = sg.generate("BTC_USD", "H1", account_balance=10000.0)
 
@@ -111,7 +124,7 @@ class TestFullPipelineEndToEnd:
         """scan_all_pairs() with 3 mocked pairs — list returned, no exceptions."""
         oanda = MagicMock()
         oanda.get_candles.return_value = realistic_eur_usd_candles
-        oanda.get_current_spread.return_value = 1.2
+        oanda.get_current_spread.return_value = REALISTIC_SPREADS["EUR_USD"]
 
         sg = SignalGenerator(
             oanda_client=oanda,
@@ -139,7 +152,7 @@ class TestDQGateIntegration:
         in_memory_db: Database,
     ) -> None:
         """News blackout → generate() returns None."""
-        sg = _make_sg(realistic_eur_usd_candles, mock_news_client_blocked, in_memory_db)
+        sg = _make_sg(realistic_eur_usd_candles, mock_news_client_blocked, in_memory_db, "EUR_USD")
 
         result = sg.generate("EUR_USD", "H1")
 
@@ -151,12 +164,17 @@ class TestDQGateIntegration:
         mock_news_client: MagicMock,
         in_memory_db: Database,
     ) -> None:
-        """Spread=50 pips for EUR/USD → DQ rejects → None."""
+        """Spread=50 pips for EUR/USD in price units → DQ rejects → None.
+
+        EUR/USD limit = 2 pips = 0.0002 price units.
+        We pass 0.0050 = 50 pips → clearly above limit → DQ blocks.
+        """
         sg = _make_sg(
             realistic_eur_usd_candles,
             mock_news_client,
             in_memory_db,
-            spread=0.0050,  # 50 pips in price terms, well above 2 pip EUR limit
+            "EUR_USD",
+            spread=0.0050,  # 50 pips × 0.0001 — 25× above 2-pip EUR limit
         )
 
         result = sg.generate("EUR_USD", "H1")

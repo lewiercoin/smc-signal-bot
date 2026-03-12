@@ -95,7 +95,7 @@ async def test_send_signal_success():
     call_kwargs = mock_app.bot.send_message.call_args
     assert call_kwargs.kwargs["chat_id"] == "@test_channel"
     assert call_kwargs.kwargs["parse_mode"] == "HTML"
-    mock_db.update_signal_status.assert_called_once()
+    mock_db.update_signal_status_by_uuid.assert_called_once()
 
 
 @pytest.mark.asyncio

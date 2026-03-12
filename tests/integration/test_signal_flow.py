@@ -6,7 +6,8 @@ Verifies signal field correctness and risk rule compliance.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -146,21 +147,42 @@ class TestSignalLifecycle:
         mock_news_client: MagicMock,
         in_memory_db: Database,
     ) -> None:
-        """update_signal_status_by_uuid() changes status in DB."""
+        """send_signal() → update_signal_status_by_uuid() → DB status == 'sent'.
+
+        Tests the real path: TelegramBot.send_signal() calls
+        update_signal_status_by_uuid() (FIX 1). Validates the full chain
+        from Signal to DB status update, not just the DB method in isolation.
+        """
+        from bot.telegram_bot import TelegramBot
+
         sg = _make_sg_for_flow(realistic_eur_usd_candles, mock_news_client, in_memory_db)
         signal = _force_signal(sg, "EUR_USD", "bullish", candles=realistic_eur_usd_candles)
         assert signal is not None
 
-        in_memory_db.update_signal_status_by_uuid(
-            signal_uuid=signal.id,
-            status="SENT",
-            closed_price=0.0,
-            pnl_r=0.0,
+        # Build TelegramBot with real DB, mocked Telegram network
+        mock_app = MagicMock()
+        mock_app.bot.send_message = AsyncMock(
+            return_value=MagicMock(message_id=9999)
         )
+        mock_app.bot.send_message.return_value = MagicMock(message_id=9999)
+
+        # TelegramEditor falls back to deterministic (no API key in tests)
+        bot = TelegramBot(
+            signal_generator=sg,
+            db=in_memory_db,
+            channel_id="-100123456789",
+            admin_chat_id=None,
+        )
+        bot._app = mock_app
+
+        asyncio.run(bot.send_signal(signal))
 
         db_row = in_memory_db.get_signal_by_uuid(signal.id)
         assert db_row is not None
-        assert db_row["status"] == "SENT"
+        assert db_row["status"] == "sent", (
+            f"Expected status='sent' after send_signal(), got {db_row['status']!r}. "
+            "Check that send_signal() calls update_signal_status_by_uuid()."
+        )
 
     def test_multiple_signals_different_pairs(
         self,
@@ -173,9 +195,9 @@ class TestSignalLifecycle:
         sg_eur = _make_sg_for_flow(
             realistic_eur_usd_candles, mock_news_client, in_memory_db, "EUR_USD"
         )
-        # XAU spread: 0.05 price units = 5 pips (well within 30 pip XAU limit)
+        # XAU spread: 0.30 price units = 30 pip × 0.01 = 30 cents (within 30 pip XAU limit)
         sg_xau = _make_sg_for_flow(
-            realistic_xau_usd_candles, mock_news_client, in_memory_db, "XAU_USD", spread=0.05
+            realistic_xau_usd_candles, mock_news_client, in_memory_db, "XAU_USD", spread=0.30
         )
 
         sig_eur = _force_signal(sg_eur, "EUR_USD", "bullish", candles=realistic_eur_usd_candles)
@@ -312,6 +334,49 @@ class TestSignalSanityChecks:
         assert signal.confluence_score >= 65, (
             f"Confluence {signal.confluence_score} below threshold 65"
         )
+
+
+# ── No-internal-mocks smoke test (FIX 3 — Approach A) ───────────────────────
+
+
+class TestNoInternalMocks:
+    def test_full_pipeline_no_internal_mocks(
+        self,
+        realistic_eur_usd_candles: list[Candle],
+        mock_news_client: MagicMock,
+        in_memory_db: Database,
+    ) -> None:
+        """Pipeline runs end-to-end with ZERO internal mocks.
+
+        Only OANDA and News are mocked (external I/O).
+        scorer, risk, detectors all run with real logic.
+        If Signal produced → sanity check fields.
+        If None → acceptable (low confluence on this data).
+        Point: prove the full chain never crashes.
+        """
+        sg = _make_sg_for_flow(
+            realistic_eur_usd_candles, mock_news_client, in_memory_db, "EUR_USD"
+        )
+
+        # No patch.object — real scorer, real risk, real detectors
+        result = sg.generate("EUR_USD", "H1", account_balance=10000.0)
+
+        assert result is None or isinstance(result, Signal)
+
+        if result is not None:
+            # Full field sanity: all critical fields must be sane
+            assert len(result.id) == 36, "Signal.id must be UUID"
+            assert result.pair == "EUR_USD"
+            assert result.direction in ("bullish", "bearish")
+            assert result.entry > 0
+            assert result.stop_loss > 0
+            assert result.confluence_score >= 65
+            assert result.risk_reward_ratio >= 1.0
+
+            # Verify it was persisted to DB (no mock on DB either)
+            db_row = in_memory_db.get_signal_by_uuid(result.id)
+            assert db_row is not None, "Signal must be persisted to DB"
+            assert db_row["signal_uuid"] == result.id
 
 
 # ── Edge case flows ───────────────────────────────────────────────────────────
