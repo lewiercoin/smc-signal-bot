@@ -30,14 +30,13 @@ CREATE TABLE signals (
     tp1_price           REAL,
     tp2_price           REAL,
     tp3_price           REAL,
-    confluence_score    REAL,
-    risk_reward         REAL,
-    lot_size            REAL,
-    atr_at_entry        REAL,
+    confluence_score    INTEGER,                -- 0-110 (INTEGER, nie REAL)
+    session             TEXT,                   -- timeframe np. H1
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status              TEXT DEFAULT 'OPEN',    -- OPEN / sent / closed
+    closed_at           TIMESTAMP,
     closed_price        REAL,
-    pnl_r               REAL,
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    pnl_r               REAL
 );
 ```
 **KRYTYCZNE**: `Signal.id` to UUID string (np. `"a1b2c3d4-..."`), NIE integer.
