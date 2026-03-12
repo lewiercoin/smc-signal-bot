@@ -1,0 +1,15 @@
+[Unit]
+Description=SMC Signal Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/smc-signal-bot
+Environment=PATH=/root/smc-signal-bot/.venv/bin:/usr/bin
+ExecStart=/root/smc-signal-bot/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
