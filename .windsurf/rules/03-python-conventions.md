@@ -86,9 +86,11 @@ class Signal:
     direction: str           # "bullish" / "bearish" (lowercase!)
     entry: float
     stop_loss: float
-    take_profits: TakeProfitLevels
-    position_size: PositionSize
-    confluence_score: float
+    take_profit_1: float
+    take_profit_2: float
+    take_profit_3: float
+    position_size: float    # lots
+    confluence_score: int   # 0-110
     risk_reward_ratio: float
     created_at: datetime
 ```
@@ -110,7 +112,7 @@ tests/
     ├── test_pipeline.py
     └── test_signal_flow.py
 ```
-Łączna liczba testów: 380 (po Tygodniu 8).
+Łączna liczba testów: 381 (po Tygodniu 8).
 
 ## Async i scheduler
 - Telegram bot: `async` z `asyncio`

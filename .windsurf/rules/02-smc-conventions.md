@@ -10,7 +10,7 @@ Parametry hardcoded w modułach — brak pliku YAML config. Źródło prawdy: `e
 | max_spread (pips) | 2.0 | 30.0 | 50.0 |
 | TP1 / TP2 / TP3 (R) | 1.5 / 2.5 / 3.5 | 1.5 / 2.5 / 3.5 | 1.5 / 2.5 / 5.5 |
 | max_risk_pct | 2% | 2% | 2% |
-| absorption body_ratio | > 0.70 | > 0.70 | > 0.65 |
+| absorption body_ratio | > 0.70 | > 0.70 | > 0.70 |
 | absorption vol_ratio | ≥ 1.5 | ≥ 1.5 | ≥ 2.0 |
 
 ## IPDA — strefy i reguły
@@ -49,11 +49,11 @@ score ≥ 65   → generuj Signal, zapisz do DB, wyślij na Telegram
 Zaimplementowany w `smc/swing_detector.py` (nie w osobnym `utils/dynamic_swing.py`).
 Trzy reżimy zmienności (ATR-adaptive):
 ```
-HIGH    (ATR ratio ≥ 1.4)   → swing_length = 7   (krótki — częste rejony)
-NORMAL  (ratio 0.7–1.4)    → swing_length = 10  (domyślny)
-LOW     (ratio < 0.7)      → swing_length = 14  (długi — rzadkie rejony)
+HIGH    (ATR ratio ≥ 1.5)   → swing_length = 14  (długi — większe swingsy w zmiennym rynku)
+NORMAL  (ratio 0.7–1.5)    → swing_length = 10  (domyślny, BASE_SWING_LENGTH)
+LOW     (ratio < 0.7)      → swing_length = 7   (krótki — mała zmienność)
 ```
-**UWAGA**: Stare rules miały 5 reżimów (EXTREME/HIGH/NORMAL/LOW/FLAT) i zakres 16–40. Faktyczny kod używa 3 reżimów i wartości 7/10/14.
+**UWAGA**: Stare rules miały 5 reżimów (EXTREME/HIGH/NORMAL/LOW/FLAT) i zakres 16–40. Faktyczny kod używa 3 reżimów (HIGH/NORMAL/LOW), wartości 14/10/7, próg HIGH_VOL_THRESHOLD=1.5 (nie 1.4).
 
 ## Absorption Detection [GROK-1]
 Zaimplementowane w `engine/confluence_scorer.py` (NIE w osobnym `smc/absorption.py`).

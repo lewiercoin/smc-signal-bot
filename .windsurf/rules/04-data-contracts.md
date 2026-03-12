@@ -109,7 +109,7 @@ CREATE TABLE candles (
 );
 ```
 
-## DQ — walidacja danych (dq/validators.py)
+## DQ — walidacja danych (dq/data_quality.py)
 Każda świeca musi przejść walidację zanim trafi do detektorów SMC:
 ```python
 def validate_candle(c: Candle) -> tuple[bool, str]:
@@ -128,4 +128,4 @@ Odrzucone świece: loguj do pliku, nie rzucaj wyjątku, pomijaj w obliczeniach.
 - OANDA: max 120 req/min → cache OHLCV w tabeli `candles`, odświeżaj tylko po nowej świecy
 - Alpha Vantage: 25 req/day → cache DXY na 4h, nie odpytuj częściej
 - Finnhub: 60 req/min (free) → bezpieczne, ale cache kalendarza na 4h
-- Anthropic API: bez twardego limitu, ale każde wywołanie kosztuje → gate na score ≥60
+- Anthropic API: bez twardego limitu, ale każde wywołanie kosztuje → gate na score ≥65 (confluence_threshold=65)
