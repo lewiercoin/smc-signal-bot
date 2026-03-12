@@ -290,3 +290,112 @@ def test_format_optimizer_report_with_suggestions():
     assert "tp1_ratio" in report
     assert "1.5" in report
     assert "1.8" in report
+
+
+# ── T9 Adapter: DB → Optimizer contract ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_optimizer_job_passes_adapted_keys():
+    """_optimizer_job przekazuje do optimize() rekordy z kluczami oczekiwanymi przez Optimizer."""
+    scheduler, mock_bot = make_scheduler()
+
+    mock_optimizer = MagicMock()
+    mock_optimizer.optimize.return_value = _make_agent_result()
+    mock_db = MagicMock()
+    mock_db.get_closed_signals.return_value = [
+        {
+            "instrument": "EUR_USD",
+            "status": "TP1",
+            "pnl_r": 1.5,
+            "created_at": "2026-03-10T09:00:00",
+            "closed_at": "2026-03-10T10:00:00",
+            "session": "H1",
+        }
+    ] * 12
+    scheduler.optimizer = mock_optimizer
+    scheduler.db = mock_db
+
+    await scheduler._optimizer_job()
+
+    mock_optimizer.optimize.assert_called_once()
+    passed = mock_optimizer.optimize.call_args[0][0]
+    assert len(passed) == 12
+    record = passed[0]
+    assert "r_achieved" in record
+    assert "result" in record
+    assert "opened_at" in record
+    assert "setup_type" in record
+    assert "session" in record
+    assert "instrument" in record
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("TP1", "tp1_hit"),
+    ("TP2", "tp2_hit"),
+    ("TP3", "tp3_hit"),
+    ("SL", "sl_hit"),
+    ("BE", "breakeven"),
+    ("tp1", "tp1_hit"),  # lowercase
+    ("sl", "sl_hit"),    # lowercase
+])
+def test_map_result_known_statuses(status, expected):
+    """_map_result ze znanych statusów → poprawny string Optimizer."""
+    scheduler, _ = make_scheduler()
+    assert scheduler._map_result(status, 0.0) == expected
+
+
+@pytest.mark.parametrize("status,pnl_r,expected", [
+    ("EXPIRED", 1.5,  "tp1_hit"),
+    ("EXPIRED", -1.0, "sl_hit"),
+    ("EXPIRED", 0.0,  "breakeven"),
+    ("EXPIRED", None, "breakeven"),
+    ("closed",  2.0,  "tp1_hit"),
+    ("sent",   -0.5,  "sl_hit"),
+    (None,      0.0,  "breakeven"),
+])
+def test_map_result_fallback_by_pnl_r(status, pnl_r, expected):
+    """_map_result dla nieznanych statusów → fallback po pnl_r."""
+    scheduler, _ = make_scheduler()
+    assert scheduler._map_result(status, pnl_r) == expected
+
+
+@pytest.mark.parametrize("ts,expected_session", [
+    ("2026-03-10T08:00:00+00:00", "London"),
+    ("2026-03-10T11:59:00+00:00", "London"),
+    ("2026-03-10T12:00:00+00:00", "New York"),  # granica krytyczna
+    ("2026-03-10T14:00:00+00:00", "New York"),
+    ("2026-03-10T20:59:00+00:00", "New York"),
+    ("2026-03-10T23:00:00+00:00", "Other"),
+    ("2026-03-10T06:00:00+00:00", "Other"),
+    (None, "Other"),
+    ("invalid-ts", "Other"),
+])
+def test_derive_session_utc_hours(ts, expected_session):
+    """_derive_session z godzin UTC → London/New York/Other."""
+    scheduler, _ = make_scheduler()
+    assert scheduler._derive_session(ts) == expected_session
+
+
+def test_opened_at_fallback_to_closed_at():
+    """_adapt_closed_signals_for_optimizer: brak created_at → fallback do closed_at."""
+    scheduler, _ = make_scheduler()
+    rows = [
+        {
+            "instrument": "XAU_USD",
+            "status": "SL",
+            "pnl_r": -1.0,
+            "created_at": None,
+            "closed_at": "2026-03-10T15:00:00",
+            "session": "H1",
+        }
+    ]
+
+    adapted = scheduler._adapt_closed_signals_for_optimizer(rows)
+
+    assert len(adapted) == 1
+    record = adapted[0]
+    assert record["opened_at"] == "2026-03-10T15:00:00"
+    assert record["result"] == "sl_hit"
+    assert record["r_achieved"] == -1.0
+    assert record["session"] == "New York"

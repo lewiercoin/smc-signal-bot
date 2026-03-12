@@ -81,6 +81,85 @@ class SignalScheduler:
             self._is_running = False
             log.info("scheduler_stopped")
 
+    # ── Adapter: DB → Optimizer contract ──────────────────────────────────────
+
+    def _map_result(self, status: str | None, pnl_r: float | None) -> str:
+        """Mapuje signals.status na kontrakt Optimizer (result field)."""
+        _MAP = {
+            "TP1": "tp1_hit",
+            "TP2": "tp2_hit",
+            "TP3": "tp3_hit",
+            "SL": "sl_hit",
+            "BE": "breakeven",
+        }
+        if status and status.upper() in _MAP:
+            return _MAP[status.upper()]
+        r = float(pnl_r or 0.0)
+        if r > 0.0:
+            return "tp1_hit"
+        if r < 0.0:
+            return "sl_hit"
+        return "breakeven"
+
+    def _derive_session(self, ts: str | None) -> str:
+        """Wylicza nazwe sesji tradingowej z timestampu UTC.
+
+        07:00-11:59 UTC -> London
+        12:00-20:59 UTC -> New York
+        pozostale     -> Other
+        """
+        if not ts:
+            return "Other"
+        try:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            h = dt.hour
+            if 7 <= h < 12:
+                return "London"
+            if 12 <= h < 21:
+                return "New York"
+        except (ValueError, TypeError):
+            pass
+        return "Other"
+
+    def _to_iso_utc(self, ts: object | None) -> str | None:
+        """Konwertuje timestamp do stringa ISO-8601 UTC lub None."""
+        if ts is None:
+            return None
+        if isinstance(ts, datetime):
+            return ts.astimezone(timezone.utc).isoformat()
+        return str(ts)
+
+    def _adapt_closed_signals_for_optimizer(self, rows: list[dict]) -> list[dict]:
+        """Mapuje surowe rekordy signals DB na kontrakt optimizer.optimize().
+
+        DB schema:  instrument, status, pnl_r, created_at, closed_at, session (timeframe)
+        Optimizer:  instrument, session, result, r_achieved, setup_type, opened_at, closed_at
+        """
+        adapted = []
+        fallback_ts_count = 0
+        for row in rows:
+            created_at = row.get("created_at")
+            closed_at = row.get("closed_at")
+            opened_at = created_at or closed_at
+            if not created_at:
+                fallback_ts_count += 1
+            adapted.append({
+                "instrument": row.get("instrument", ""),
+                "session": self._derive_session(opened_at),
+                "result": self._map_result(row.get("status"), row.get("pnl_r")),
+                "r_achieved": float(row.get("pnl_r") or 0.0),
+                "setup_type": "UNKNOWN",
+                "opened_at": self._to_iso_utc(opened_at),
+                "closed_at": self._to_iso_utc(closed_at),
+            })
+        log.info(
+            "optimizer_input_adapted",
+            raw_count=len(rows),
+            adapted_count=len(adapted),
+            fallback_ts=fallback_ts_count,
+        )
+        return adapted
+
     # ── Optimizer job ─────────────────────────────────────────────────────────
 
     async def _optimizer_job(self) -> None:
@@ -99,8 +178,9 @@ class SignalScheduler:
                 )
                 return
 
-            trade_history = self.db.get_closed_signals(days=_OPTIMIZER_LOOKBACK_DAYS)
-            log.info("optimizer_trades_loaded", count=len(trade_history))
+            raw_rows = self.db.get_closed_signals(days=_OPTIMIZER_LOOKBACK_DAYS)
+            log.info("optimizer_trades_loaded", count=len(raw_rows))
+            trade_history = self._adapt_closed_signals_for_optimizer(raw_rows)
 
             if len(trade_history) < _OPTIMIZER_MIN_TRADES:
                 msg = (
