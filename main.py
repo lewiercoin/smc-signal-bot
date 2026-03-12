@@ -40,5 +40,10 @@ if __name__ == "__main__":
         from paper_trading.runner import PaperTradingRunner
         runner = PaperTradingRunner()
         asyncio.run(runner.run(duration_hours=24))
+    elif len(sys.argv) > 1 and sys.argv[1] == "analyze":
+        from paper_trading.analyzer import PaperAnalyzer
+        analyzer = PaperAnalyzer()
+        report = analyzer.analyze()
+        analyzer.print_report(report)
     else:
         asyncio.run(main())
