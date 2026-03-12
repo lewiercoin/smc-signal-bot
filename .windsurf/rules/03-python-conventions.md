@@ -117,8 +117,9 @@ tests/
 ## Async i scheduler
 - Telegram bot: `async` z `asyncio`
 - APScheduler z `AsyncIOScheduler`
-- Funkcje I/O (OANDA API, baza, Anthropic API): `async def`
-- CPU-bound (obliczenia SMC): `def` (synchroniczne — nie blokują event loop)
+- Funkcje I/O (OANDA API, baza, Anthropic API): `def` (synchroniczne — connectors i db nie są async)
+- CPU-bound (obliczenia SMC): `def` (synchroniczne)
+- **UWAGA**: `oanda_client.py`, `news_client.py`, `database.py` — wszystkie synchroniczne. Nie refaktoruj na `async def` bez decyzji architektonicznej.
 
 ## Zmienne środowiskowe — nigdy w kodzie
 ```python
