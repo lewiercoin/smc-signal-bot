@@ -6,8 +6,10 @@ import sys
 
 import structlog
 
+from agents.optimizer import Optimizer
 from bot.scheduler import SignalScheduler
 from bot.telegram_bot import TelegramBot
+from db.database import Database
 
 log = structlog.get_logger()
 
@@ -15,9 +17,14 @@ log = structlog.get_logger()
 async def main() -> None:
     log.info("bot_starting")
 
-    bot = TelegramBot()
+    db = Database()
+    db.initialize()
+
+    bot = TelegramBot(db=db)
     app = bot.setup()
-    scheduler = SignalScheduler(telegram_bot=bot)
+
+    optimizer = Optimizer()
+    scheduler = SignalScheduler(telegram_bot=bot, optimizer=optimizer, db=db)
 
     scheduler.start()
 
