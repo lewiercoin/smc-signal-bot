@@ -3,16 +3,16 @@
 
 ## Wersja i środowisko
 ```
-Python 3.11 (dokładnie — nie 3.12, nie 3.10)
+Python 3.11+ (projekt działa na 3.13.1)
 Środowisko: venv w katalogu .venv/
-Plik zależności: pyproject.toml (nie requirements.txt)
+Plik zależności: requirements.txt (brak pyproject.toml)
 ```
 
 ## Formatowanie i linting
 ```bash
 ruff check .          # linting
 ruff format .         # formatowanie (zastępuje black)
-mypy src/             # type checking
+mypy .                # type checking (NIE mypy src/ — brak katalogu src/)
 pytest tests/ -x      # testy, stop na pierwszym błędzie
 ```
 Uruchom te cztery komendy przed każdym commitem. Jeśli cokolwiek failuje — napraw zanim commit.
@@ -33,18 +33,16 @@ import structlog
 
 logger = structlog.get_logger()
 
-@dataclass
+@dataclass(frozen=True)
 class Candle:
-    ts_utc: datetime
+    """Faktyczna definicja: connectors/oanda_client.py"""
+    instrument: str
+    timestamp: datetime
     open: float
     high: float
     low: float
     close: float
-    volume: float | None
-    source: str
-    tf: str
-    instrument: str
-    quality_flags: dict
+    volume: int
 
 def validate_candle(candle: Candle) -> bool:
     """Sprawdza czy świeca spełnia kontrakty danych.
@@ -56,10 +54,10 @@ def validate_candle(candle: Candle) -> bool:
         True jeśli świeca jest poprawna, False w przeciwnym razie.
     """
     if candle.high < candle.low:
-        logger.warning("candle_invalid", reason="high < low", ts=candle.ts_utc)
+        logger.warning("candle_invalid", reason="high < low", ts=candle.timestamp)
         return False
     if candle.close <= 0 or candle.open <= 0:
-        logger.warning("candle_invalid", reason="non_positive_price", ts=candle.ts_utc)
+        logger.warning("candle_invalid", reason="non_positive_price", ts=candle.timestamp)
         return False
     return True
 ```
@@ -68,48 +66,51 @@ def validate_candle(candle: Candle) -> bool:
 Zawsze używaj tych struktur, nie luźnych słowników:
 
 ```python
-# Candle — kontrakt wejściowy
-@dataclass
+# Candle — kontrakt wejściowy (connectors/oanda_client.py)
+@dataclass(frozen=True)
 class Candle:
-    ts_utc: datetime
-    open: float; high: float; low: float; close: float
-    volume: float | None
-    source: str; tf: str; instrument: str
-    quality_flags: dict
+    instrument: str          # "EUR_USD" / "XAU_USD" / "BTC_USD"
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
 
-# Setup — obiekt przekazywany przez cały pipeline
+# Signal — wyjście pipeline (engine/signal_generator.py)
+# Nie używaj klasy Setup — została zastąpiona przez Signal
 @dataclass
-class Setup:
-    instrument: str
-    direction: str            # "LONG" | "SHORT"
-    htf_bias: str             # "bull" | "bear" | "neutral"
-    ipda_percent: float       # 0.0–100.0
-    smc_tags: list[str]       # ["PPDD", "OB", "FVG", "BOS", ...]
-    ob_zone: dict             # {"top": float, "bottom": float, "ts": datetime}
-    fvg_zone: dict | None
-    confluence_score: int     # 0–110
-    bar_ratio: float
-    rvr_ratio: float
-    absorption_detected: bool
-    absorption_type: str      # "BULLISH" | "BEARISH" | "NEUTRAL" | "NONE"
-    swing_length_used: int
-    volatility_regime: str    # "NORMAL" | "HIGH" | "EXTREME" | "LOW" | "FLAT"
-    detected_at_utc: datetime
-    expires_at_utc: datetime
-    news_risk: str            # "LOW" | "MEDIUM" | "HIGH"
+class Signal:
+    id: str                  # UUID string, np. str(uuid.uuid4())
+    pair: str
+    direction: str           # "bullish" / "bearish" (lowercase!)
+    entry: float
+    stop_loss: float
+    take_profits: TakeProfitLevels
+    position_size: PositionSize
+    confluence_score: float
+    risk_reward_ratio: float
+    created_at: datetime
 ```
 
 ## Testowanie
 ```
 tests/
-├── test_dq.py              # walidacja danych
-├── test_smc_detector.py    # detekcja OB, FVG, BoS
-├── test_confluence.py      # scoring
-├── test_risk.py            # SL/TP, sizing
-└── test_no_lookahead.py    # KRYTYCZNY: brak look-ahead w backteście
+├── test_data_quality.py   # DQ validators (spread, news, candle count)
+├── test_swing_detector.py # swing detection + ATR-adaptive length
+├── test_ob_detector.py    # order block detection
+├── test_fvg_detector.py   # fair value gap detection
+├── test_confluence_scorer.py  # scoring + absorption
+├── test_risk_engine.py    # SL/TP, sizing, spread gate
+├── test_signal_generator.py  # end-to-end pipeline
+├── test_telegram_bot.py   # bot send/recv
+├── test_analyzer.py       # paper trading analyzer
+└── integration/           # full pipeline integration tests (22+)
+    ├── conftest.py
+    ├── test_pipeline.py
+    └── test_signal_flow.py
 ```
-Każdy moduł w `smc/` i `utils/` ma odpowiadający plik testowy.
-Test no-lookahead: wszystkie cechy liczone TYLKO z danych dostępnych przed `detected_at_utc`.
+Łączna liczba testów: 380 (po Tygodniu 8).
 
 ## Async i scheduler
 - Telegram bot: `async` z `asyncio`
