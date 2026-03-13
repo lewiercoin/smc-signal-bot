@@ -39,17 +39,24 @@ def main() -> None:
     app.post_shutdown = post_shutdown
 
     webhook_url = os.getenv("WEBHOOK_URL")
-    if webhook_url:
+    use_polling = os.getenv("USE_POLLING", "false").lower() == "true"
+    if webhook_url and not use_polling:
+        import pathlib  # noqa: PLC0415
+        base = pathlib.Path(__file__).parent / "deploy" / "ssl"
+        cert_path = base / "cert.pem"
+        key_path = base / "private.key"
         log.info("running_webhook", url=webhook_url)
         app.run_webhook(
             listen="0.0.0.0",
             port=8443,
             url_path="webhook",
             webhook_url=f"{webhook_url}/webhook",
+            cert=str(cert_path),
+            key=str(key_path),
         )
     else:
         log.info("running_polling")
-        app.run_polling()
+        app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
