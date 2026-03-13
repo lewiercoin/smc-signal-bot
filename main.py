@@ -17,7 +17,7 @@ load_dotenv()
 log = structlog.get_logger()
 
 
-async def main() -> None:
+def main() -> None:
     log.info("bot_starting")
 
     db = Database()
@@ -29,12 +29,19 @@ async def main() -> None:
     optimizer = Optimizer()
     scheduler = SignalScheduler(telegram_bot=bot, optimizer=optimizer, db=db)
 
-    scheduler.start()
+    async def post_init(application: object) -> None:
+        scheduler.start()
+
+    async def post_shutdown(application: object) -> None:
+        scheduler.stop()
+
+    app.post_init = post_init
+    app.post_shutdown = post_shutdown
 
     webhook_url = os.getenv("WEBHOOK_URL")
     if webhook_url:
         log.info("running_webhook", url=webhook_url)
-        await app.run_webhook(
+        app.run_webhook(
             listen="0.0.0.0",
             port=8443,
             url_path="webhook",
@@ -42,7 +49,7 @@ async def main() -> None:
         )
     else:
         log.info("running_polling")
-        await app.run_polling()
+        app.run_polling()
 
 
 if __name__ == "__main__":
@@ -56,4 +63,4 @@ if __name__ == "__main__":
         report = analyzer.analyze()
         analyzer.print_report(report)
     else:
-        asyncio.run(main())
+        main()
