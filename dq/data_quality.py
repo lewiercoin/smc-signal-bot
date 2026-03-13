@@ -69,7 +69,7 @@ class DataQualityChecker:
     SPREAD_WARNING_PCT = 0.8
 
     # Minimum candles required
-    MIN_CANDLES = 100
+    MIN_CANDLES = 99
 
     # Max gap multiplier (2x granularity)
     MAX_GAP_MULTIPLIER = 2
