@@ -441,12 +441,12 @@ class SignalGenerator:
             risk_ctx: dict = {
                 "instrument": pair,
                 "direction": confluence.setup_direction,
-                "entry_price": current_price,
-                "stop_loss": None,
+                "entry": current_price,
+                "stop_loss": 0.0,
                 "current_spread": spread or 0.0,
                 "account_balance": account_balance or 10000.0,
                 "open_positions": self._get_open_positions(),
-                "daily_pnl_pct": self._get_daily_pnl_pct(),
+                "daily_loss_pct": self._get_daily_pnl_pct(),
                 "confluence_score": confluence.total_score,
             }
             risk_result: RiskVerifierResult = self.risk_verifier.verify(risk_ctx)

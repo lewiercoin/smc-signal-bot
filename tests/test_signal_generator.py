@@ -335,11 +335,20 @@ class TestAIGate:
 
     def test_agents_called_when_score_above_60(self, sg: SignalGenerator) -> None:
         """Score >= 60 → structure_agent.analyze and risk_verifier.verify are called."""
+        from agents.base_agent import AgentResult, AgentTier, MarketBias
         from agents.risk_verifier import RiskVerifierResult
 
         confluence = _make_confluence_result(total_score=65)
         trade = _make_trade_params()
 
+        dummy = AgentResult(
+            agent_name="test",
+            tier_used=AgentTier.DETERMINISTIC,
+            bias=MarketBias.BULLISH,
+            confidence=0.7,
+            reasoning="test",
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
         approved_result = RiskVerifierResult(
             risk_approved=True,
             position_size=1.0,
@@ -348,29 +357,15 @@ class TestAIGate:
         with (
             patch.object(sg.scorer, "score", return_value=confluence),
             patch.object(sg.risk, "calculate_trade", return_value=trade),
-            patch.object(sg.structure_agent, "analyze") as mock_structure,
-            patch.object(sg.fundamental_agent, "analyze") as mock_fundamental,
-            patch.object(sg.risk_verifier, "verify", return_value=approved_result),
+            patch.object(sg.structure_agent, "analyze", return_value=dummy) as mock_structure,
+            patch.object(sg.fundamental_agent, "analyze", return_value=dummy) as mock_fundamental,
+            patch.object(sg.risk_verifier, "verify", return_value=approved_result) as mock_risk,
         ):
-            from agents.base_agent import AgentResult, AgentTier, MarketBias
-            from datetime import datetime, timezone
-
-            dummy = AgentResult(
-                agent_name="test",
-                tier_used=AgentTier.DETERMINISTIC,
-                bias=MarketBias.BULLISH,
-                confidence=0.7,
-                reasoning="test",
-                timestamp=datetime.now(tz=timezone.utc),
-            )
-            mock_structure.return_value = dummy
-            mock_fundamental.return_value = dummy
-
             sg.generate("EUR_USD", "H1")
 
         mock_structure.assert_called_once()
         mock_fundamental.assert_called_once()
-        sg.risk_verifier.verify.assert_called_once()  # type: ignore[attr-defined]
+        mock_risk.assert_called_once()
 
     def test_agents_not_called_when_score_below_60(self, sg: SignalGenerator) -> None:
         """Score < 60 → AI agents are NOT called (saves API costs)."""
