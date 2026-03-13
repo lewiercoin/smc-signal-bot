@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from agents.base_agent import AgentConfig
 from agents.fundamental_agent import FundamentalAgent
 from agents.risk_verifier import RiskVerifier, RiskVerifierResult
 from agents.structure_agent import StructureAgent
@@ -124,8 +125,8 @@ class SignalGenerator:
         self.dq = DataQualityChecker()
         self.scorer = ConfluenceScorer()
         self.risk = RiskEngine(max_risk_pct=max_risk_pct)
-        self.structure_agent = StructureAgent()
-        self.fundamental_agent = FundamentalAgent()
+        self.structure_agent = StructureAgent(config=AgentConfig(temperature=0.2))
+        self.fundamental_agent = FundamentalAgent(config=AgentConfig(temperature=0.3))
         self.risk_verifier = RiskVerifier()
         self.confluence_threshold = confluence_threshold
         self.logger = logger.bind(module="signal_generator")
