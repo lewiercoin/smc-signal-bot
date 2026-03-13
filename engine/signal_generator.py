@@ -17,6 +17,9 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from agents.fundamental_agent import FundamentalAgent
+from agents.risk_verifier import RiskVerifier, RiskVerifierResult
+from agents.structure_agent import StructureAgent
 from db.database import Database
 from dq.data_quality import DataQualityChecker
 from engine.confluence_scorer import ConfluenceScorer
@@ -121,6 +124,9 @@ class SignalGenerator:
         self.dq = DataQualityChecker()
         self.scorer = ConfluenceScorer()
         self.risk = RiskEngine(max_risk_pct=max_risk_pct)
+        self.structure_agent = StructureAgent()
+        self.fundamental_agent = FundamentalAgent()
+        self.risk_verifier = RiskVerifier()
         self.confluence_threshold = confluence_threshold
         self.logger = logger.bind(module="signal_generator")
 
@@ -189,6 +195,19 @@ class SignalGenerator:
             score=confluence.total_score,
             direction=confluence.setup_direction,
         )
+
+        # ── STEP 3.5: AI gate ─────────────────────────────────────────────────
+        ai_passed, ai_reason = self._run_ai_gate(
+            pair=pair,
+            timeframe=timeframe,
+            candles=candles,
+            confluence=confluence,
+            spread=spread,
+            account_balance=account_balance,
+        )
+        if not ai_passed:
+            log.info("pipeline_abort", step="ai_gate", reason=ai_reason)
+            return None
 
         # ── STEP 4: Risk calculation gate ─────────────────────────────────────
         try:
@@ -343,6 +362,124 @@ class SignalGenerator:
             return False, f"News check error (fail-safe block): {exc}"
 
         return True, ""
+
+    def _run_ai_gate(
+        self,
+        pair: str,
+        timeframe: str,
+        candles: list[Candle],
+        confluence: ConfluenceResult,
+        spread: float | None,
+        account_balance: float | None,
+    ) -> tuple[bool, str]:
+        """Run AI agents gate for setups with score >= 60.
+
+        Invokes Structure Agent, Fundamental Agent, and Risk Verifier.
+        Only RiskVerifier can block the pipeline — Agent 1 & 2 are informational.
+        Graceful: any agent exception is logged but never blocks the pipeline.
+
+        Args:
+            pair: Instrument key.
+            timeframe: Entry timeframe.
+            candles: LTF candles (for current price and ATR proxy).
+            confluence: Scored ConfluenceResult from confluence gate.
+            spread: Current spread in price units.
+            account_balance: Account equity for RiskVerifier sizing check.
+
+        Returns:
+            (passed, reason) — reason is empty string when passed=True.
+        """
+        _AI_GATE_THRESHOLD = 60
+        log = self.logger.bind(pair=pair, timeframe=timeframe)
+
+        if confluence.total_score < _AI_GATE_THRESHOLD:
+            return True, ""
+
+        current_price = candles[-1].close if candles else 0.0
+
+        # ── Agent 1: Structure Analyst (informational) ────────────────────────
+        try:
+            structure_ctx = {
+                "instrument": pair,
+                "timeframe": timeframe,
+                "structure_breaks": [],
+                "swing_points": [],
+                "current_price": current_price,
+                "atr": 0.0,
+            }
+            structure_result = self.structure_agent.analyze(structure_ctx)
+            log.info(
+                "agent1_structure_complete",
+                bias=structure_result.bias.value,
+                confidence=round(structure_result.confidence, 2),
+                tier=structure_result.tier_used.name,
+            )
+        except Exception as exc:
+            log.warning("agent1_structure_error", error=str(exc))
+
+        # ── Agent 2: Fundamental Analyst (informational) ──────────────────────
+        try:
+            fundamental_ctx = {
+                "instrument": pair,
+                "timeframe": timeframe,
+                "news_events": [],
+                "current_bias": confluence.setup_direction,
+            }
+            fundamental_result = self.fundamental_agent.analyze(fundamental_ctx)
+            log.info(
+                "agent2_fundamental_complete",
+                bias=fundamental_result.bias.value,
+                confidence=round(fundamental_result.confidence, 2),
+                tier=fundamental_result.tier_used.name,
+            )
+        except Exception as exc:
+            log.warning("agent2_fundamental_error", error=str(exc))
+
+        # ── Agent 3: Risk Verifier (blocker) ──────────────────────────────────
+        try:
+            risk_ctx: dict = {
+                "instrument": pair,
+                "direction": confluence.setup_direction,
+                "entry_price": current_price,
+                "stop_loss": None,
+                "current_spread": spread or 0.0,
+                "account_balance": account_balance or 10000.0,
+                "open_positions": self._get_open_positions(),
+                "daily_pnl_pct": self._get_daily_pnl_pct(),
+                "confluence_score": confluence.total_score,
+            }
+            risk_result: RiskVerifierResult = self.risk_verifier.verify(risk_ctx)
+
+            log.info(
+                "agent3_risk_verifier_complete",
+                risk_approved=risk_result.risk_approved,
+                position_size=risk_result.position_size,
+                rejection_reason=risk_result.rejection_reason or None,
+            )
+
+            if not risk_result.risk_approved:
+                return False, f"RiskVerifier blocked: {risk_result.rejection_reason}"
+
+        except Exception as exc:
+            log.warning("agent3_risk_verifier_error", error=str(exc))
+
+        return True, ""
+
+    def _get_open_positions(self) -> list[dict]:
+        """Fetch open positions from DB for RiskVerifier portfolio check."""
+        if self.db is None:
+            return []
+        try:
+            return self.db.get_open_signals()
+        except Exception:
+            return []
+
+    def _get_daily_pnl_pct(self) -> float:
+        """Return daily PnL % for circuit breaker check.
+
+        Returns 0.0 during paper trading — equity tracking not yet implemented.
+        """
+        return 0.0
 
     def _build_signal(
         self,
