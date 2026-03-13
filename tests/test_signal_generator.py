@@ -306,6 +306,90 @@ class TestScanAllPairs:
         assert "XAU_USD" not in pairs
 
 
+# ── AI gate tests ─────────────────────────────────────────────────────────────
+
+
+class TestAIGate:
+    def test_risk_verifier_blocks_when_not_approved(self, sg: SignalGenerator) -> None:
+        """Signal with score >= 65 but risk_approved=False → None."""
+        from agents.risk_verifier import RiskVerifierResult
+
+        confluence = _make_confluence_result(total_score=80)
+        trade = _make_trade_params()
+
+        blocked_result = RiskVerifierResult(
+            risk_approved=False,
+            position_size=0.0,
+            risk_notes=["Daily loss limit reached"],
+            rejection_reason="Daily loss limit reached (≥5%)",
+        )
+
+        with (
+            patch.object(sg.scorer, "score", return_value=confluence),
+            patch.object(sg.risk, "calculate_trade", return_value=trade),
+            patch.object(sg.risk_verifier, "verify", return_value=blocked_result),
+        ):
+            result = sg.generate("EUR_USD", "H1")
+
+        assert result is None
+
+    def test_agents_called_when_score_above_60(self, sg: SignalGenerator) -> None:
+        """Score >= 60 → structure_agent.analyze and risk_verifier.verify are called."""
+        from agents.risk_verifier import RiskVerifierResult
+
+        confluence = _make_confluence_result(total_score=65)
+        trade = _make_trade_params()
+
+        approved_result = RiskVerifierResult(
+            risk_approved=True,
+            position_size=1.0,
+        )
+
+        with (
+            patch.object(sg.scorer, "score", return_value=confluence),
+            patch.object(sg.risk, "calculate_trade", return_value=trade),
+            patch.object(sg.structure_agent, "analyze") as mock_structure,
+            patch.object(sg.fundamental_agent, "analyze") as mock_fundamental,
+            patch.object(sg.risk_verifier, "verify", return_value=approved_result),
+        ):
+            from agents.base_agent import AgentResult, AgentTier, MarketBias
+            from datetime import datetime, timezone
+
+            dummy = AgentResult(
+                agent_name="test",
+                tier_used=AgentTier.DETERMINISTIC,
+                bias=MarketBias.BULLISH,
+                confidence=0.7,
+                reasoning="test",
+                timestamp=datetime.now(tz=timezone.utc),
+            )
+            mock_structure.return_value = dummy
+            mock_fundamental.return_value = dummy
+
+            sg.generate("EUR_USD", "H1")
+
+        mock_structure.assert_called_once()
+        mock_fundamental.assert_called_once()
+        sg.risk_verifier.verify.assert_called_once()  # type: ignore[attr-defined]
+
+    def test_agents_not_called_when_score_below_60(self, sg: SignalGenerator) -> None:
+        """Score < 60 → AI agents are NOT called (saves API costs)."""
+        confluence = _make_confluence_result(total_score=50)
+
+        with (
+            patch.object(sg.scorer, "score", return_value=confluence),
+            patch.object(sg.structure_agent, "analyze") as mock_structure,
+            patch.object(sg.fundamental_agent, "analyze") as mock_fundamental,
+            patch.object(sg.risk_verifier, "verify") as mock_risk,
+        ):
+            result = sg.generate("EUR_USD", "H1")
+
+        assert result is None
+        mock_structure.assert_not_called()
+        mock_fundamental.assert_not_called()
+        mock_risk.assert_not_called()
+
+
 # ── Edge case tests ───────────────────────────────────────────────────────────
 
 

@@ -305,6 +305,19 @@ class Database:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def get_open_signals(self) -> list[dict[str, Any]]:
+        """Retrieve all currently open signals for portfolio correlation checks.
+
+        Returns:
+            List of signal dicts with status 'OPEN'.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM signals WHERE status = 'OPEN' ORDER BY created_at DESC"
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
     def get_closed_signals(
         self,
         days: int = 28,
