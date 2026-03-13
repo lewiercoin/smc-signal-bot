@@ -194,8 +194,8 @@ class OandaClient:
                 raise ValueError(f"No price data for {instrument}")
 
             price = prices[0]
-            bid = float(price["bid"])
-            ask = float(price["ask"])
+            bid = float(price["bids"][0]["price"]) if "bids" in price else float(price["bid"])
+            ask = float(price["asks"][0]["price"]) if "asks" in price else float(price["ask"])
             spread = ask - bid
         except Exception as e:
             self.logger.error(
