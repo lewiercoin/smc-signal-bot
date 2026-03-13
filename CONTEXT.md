@@ -1,6 +1,6 @@
 # CONTEXT.md — SMC Signal Bot
 # Źródło prawdy dla Cascade. Czytaj ten plik na początku każdej sesji.
-# Ostatnia aktualizacja: marzec 2026
+# Ostatnia aktualizacja: 2026-03-13 (deployment + paper trading start)
 # Wersja specyfikacji: v2.2 + ITS v1.0
 
 ---
@@ -39,7 +39,7 @@ Pipeline: dane → DQ → features → setups → scoring → agenci → risk �
 
 | Co | Czym | Powód |
 |----|------|-------|
-| Język | Python 3.11 | stabilna wersja, wszystkie biblioteki wspierają |
+| Język | Python 3.12 | serwer Hetzner ma 3.12 (3.11 niedostępny na Ubuntu 24.04) |
 | Baza | SQLite → PostgreSQL | SQLite wystarczy do ~500 sig/mc |
 | Broker | OANDA REST API v20 (oandapyV20) | darmowe demo, dobra dokumentacja |
 | Crypto | CCXT → Binance | prawdziwy wolumen dla BTC |
@@ -520,7 +520,7 @@ closed_at: str|None    # z DB
 | `paper_trading/analyzer.py` | ✅ | `PaperAnalyzer`, `AnalysisReport`, `PairStats` |
 | `python main.py analyze` | ✅ | CLI subcommand, wired do `main.py` |
 | `tests/test_analyzer.py` | ✅ | 9 testów (load, stats, per-pair, readiness, print) |
-| Paper trading run (20+ trades) | ⬜ | Wymaga live OANDA credentials |
+| Paper trading run (20+ trades) | 🟡 IN PROGRESS | Bot uruchomiony na serwerze, zbiera sygnały |
 
 **Kryteria go-live (hardcoded w `_evaluate_readiness`):**
 - `total_closed ≥ 20`
@@ -549,8 +549,9 @@ closed_at: str|None    # z DB
 - `WEBHOOK_URL` — opcjonalny; brak = tryb polling (dev)
 
 **Webhook vs Polling:**
-- Webhook primary (Hetzner CX22 ma stały IP) — `WEBHOOK_URL=https://<ip>:8443`
-- Polling fallback gdy `WEBHOOK_URL` nie ustawiony (lokalne dev)
+- Polling aktywny na produkcji (USE_POLLING=true w .env) — działa stabilnie
+- Webhook skonfigurowany (SSL cert w `deploy/ssl/`), wymagane re-rejestrowanie po restarcie
+- Flaga `USE_POLLING=true` w `.env` → zawsze polling niezależnie od `WEBHOOK_URL`
 
 **Scan interval:** 15 minut (H1 timeframe — 4 szanse na nową świecę)
 
@@ -566,7 +567,31 @@ closed_at: str|None    # z DB
 
 **Entry point:** `python main.py` → `asyncio.run(main())`
 
-### Następny krok: Tydzień 8–9 — Live Testing + Optymalizacja
+### Deployment produkcyjny (2026-03-13) ✅
+
+**Serwer:** Hetzner CX22, Ubuntu 24.04, IP: 204.168.146.253
+**Bot Telegram:** @mindset_order_block_bot
+**Kanał:** @EmperorBtc_unnoficial
+**Admin Chat ID:** 1293113084
+**Tryb:** polling (USE_POLLING=true)
+**Systemd:** smc-signal-bot.service, active (running), Restart=always
+
+**Bugi naprawione podczas uruchomienia:**
+
+| Bug | Plik | Problem | Fix |
+|-----|------|---------|-----|
+| OANDA Account ID | `.env` | Format `38784027001` nieprawidłowy | `101-004-38784027-001` |
+| Spread parsing | `connectors/oanda_client.py` | `price["bid"]` KeyError — OANDA zwraca `bids[0]["price"]` | Dodano fallback: `bids[0]["price"] if "bids" in price else bid` |
+| MIN_CANDLES | `dq/data_quality.py` | `100 < 100` fail — OANDA zwraca 99 (bieżąca świeca niezamknięta) | Zmieniono na `99` |
+| XAU spread limit | `dq/data_quality.py` | Limit 30 pips za niski dla OANDA practice (59-71 pips) | Zmieniono na `100` pips |
+| six + tornado | `requirements.txt` | Brakujące zależności oandapyV20 i webhook | Dodano do requirements |
+
+**Stan pipeline (2026-03-13, sesja NY):**
+- EUR/USD: `score=0`, `trend=ranging`, brak BOS/CHoCH
+- XAU/USD: `score=53`, BOS=True, 2 OB, spread OK po fix
+- BTC/USD: `score=55`, CHoCH=True, 1 bullish OB, 7 liquidity sweeps
+
+### Następny krok: Paper Trading (20+ sygnałów) → Analiza → Go-Live
 
 ### Tydzień 7 — Integration Tests + Paper Trading ✅ UKOŃCZONY
 
