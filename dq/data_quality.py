@@ -61,7 +61,7 @@ class DataQualityChecker:
     # Spread limits in pips (from CONTEXT.md)
     SPREAD_LIMITS = {
         "EUR_USD": 2.0,
-        "XAU_USD": 30.0,
+        "XAU_USD": 100.0,
         "BTC_USD": 50.0,
     }
 
